@@ -2,6 +2,7 @@
   color-scheme: dark;
   --bg: #111315;
   --panel: #1b1f23;
+  --panel2: #15191d;
   --line: #343a40;
   --text: #f4f0e8;
   --muted: #a9b0b7;
@@ -34,7 +35,9 @@ body {
 
 h1,
 h2,
-p {
+p,
+dl,
+dd {
   margin: 0;
 }
 
@@ -51,7 +54,9 @@ h2 {
 p,
 span,
 small,
-label {
+label,
+dt,
+dd {
   color: var(--muted);
 }
 
@@ -80,30 +85,63 @@ button.secondary {
   gap: 10px;
 }
 
+.tabs {
+  background: var(--panel2);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 10px 24px;
+}
+
+.tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  min-height: 34px;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.tab.active {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--text);
+}
+
 main {
-  display: grid;
-  gap: 18px;
   padding: 20px 24px 32px;
 }
 
-.band {
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 18px;
+.tabpage {
+  display: none;
+}
+
+.tabpage.active {
+  display: grid;
+  gap: 18px;
 }
 
 .telemetry {
   align-items: stretch;
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(150px, 1fr) repeat(2, minmax(110px, 0.7fr)) minmax(300px, 2fr);
+  grid-template-columns: minmax(150px, 1fr) repeat(3, minmax(110px, 0.7fr)) minmax(300px, 2fr);
+}
+
+.metric,
+.barblock,
+.panel,
+.chart,
+.readout {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .metric,
 .barblock,
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
   padding: 16px;
 }
 
@@ -150,6 +188,45 @@ main {
 meter {
   height: 16px;
   width: 100%;
+}
+
+.charts {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+}
+
+.charts.one {
+  grid-template-columns: 1fr;
+}
+
+.chart {
+  height: 340px;
+  min-width: 0;
+}
+
+.readouts {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.readout {
+  min-height: 70px;
+  padding: 12px;
+}
+
+.readout span {
+  display: block;
+  font-size: 12px;
+}
+
+.readout strong {
+  color: var(--text);
+  display: block;
+  font-size: 20px;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
 }
 
 .settings {
@@ -217,17 +294,42 @@ input[type="checkbox"] {
   padding: 2px;
 }
 
-@media (max-width: 860px) {
-  .topbar,
+.kv {
+  display: grid;
+  gap: 14px;
+}
+
+.kv dt {
+  font-size: 12px;
+}
+
+.kv dd {
+  color: var(--text);
+  margin-top: 4px;
+}
+
+@media (max-width: 1080px) {
   .telemetry,
+  .charts,
   .settings,
   .colorgrid {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 700px) {
   .topbar {
     align-items: stretch;
     display: grid;
+    padding: 14px 16px;
+  }
+
+  .tabs {
+    padding: 8px 16px;
+  }
+
+  main {
+    padding: 16px;
   }
 
   .actions {
@@ -236,5 +338,13 @@ input[type="checkbox"] {
 
   .actions button {
     flex: 1;
+  }
+
+  .chart {
+    height: 300px;
+  }
+
+  .swatches {
+    grid-template-columns: repeat(2, minmax(90px, 1fr));
   }
 }
