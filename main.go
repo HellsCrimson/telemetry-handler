@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"telemetry-handler/moza"
 	"telemetry-handler/output"
 	"telemetry-handler/receiver"
+	"telemetry-handler/webui"
 )
 
 func main() {
@@ -47,27 +49,32 @@ func main() {
 		log.Printf("loaded config %s: listen=%s:%d print_hz=%.2f", loadedPath, cfg.ListenAddr, cfg.ListenPort, cfg.PrintHz)
 	}
 
-	var mozaDriver *moza.Driver
+	runtime := newRuntime(cfg, loadedPath)
+	defer runtime.Close()
+
 	if cfg.Moza.Enabled {
-		var err error
-		mozaDriver, err = moza.NewDriver(mozaOptionsFromConfig(cfg.Moza))
-		if err != nil {
+		if err := runtime.applyMoza(cfg.Moza, nil); err != nil {
 			log.Fatalf("moza: %v", err)
 		}
-		defer func() {
-			if err := mozaDriver.Close(); err != nil {
-				log.Printf("moza close: %v", err)
-			}
-		}()
 		log.Printf("moza enabled: port=%s update_hz=%.2f", cfg.Moza.Port, cfg.Moza.UpdateHz)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if cfg.Web.Enabled {
+		server := webui.NewServer(runtime)
+		go func() {
+			log.Printf("web ui listening on http://%s", cfg.Web.Addr)
+			if err := server.ListenAndServe(ctx, cfg.Web.Addr); err != nil && !errors.Is(err, context.Canceled) {
+				log.Printf("web ui: %v", err)
+				stop()
+			}
+		}()
+	}
+
 	addr := fmt.Sprintf("%s:%d", cfg.ListenAddr, cfg.ListenPort)
 	formatter := output.NewFormatter()
-	printEvery := time.Duration(float64(time.Second) / cfg.PrintHz)
 	var lastPrint time.Time
 	var badSizes uint64
 
@@ -83,18 +90,19 @@ func main() {
 			return err
 		}
 
-		if mozaDriver != nil {
+		runtime.SetTelemetry(telemetry)
+		if runtime.MozaEnabled() {
 			currentRPM := telemetry.CurrentEngineRpm
 			if telemetry.IsRaceOn == 0 {
 				currentRPM = 0
 			}
-			if err := mozaDriver.UpdateRPM(currentRPM, telemetry.EngineMaxRpm); err != nil {
+			if err := runtime.UpdateMozaRPM(currentRPM, telemetry.EngineMaxRpm); err != nil {
 				return err
 			}
 		}
 
 		now := time.Now()
-		if lastPrint.IsZero() || now.Sub(lastPrint) >= printEvery {
+		if lastPrint.IsZero() || now.Sub(lastPrint) >= runtime.PrintEvery() {
 			lastPrint = now
 			fmt.Println(formatter.Format(telemetry))
 		}
@@ -103,6 +111,155 @@ func main() {
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Fatalf("receiver: %v", err)
 	}
+}
+
+type appRuntime struct {
+	mu        sync.RWMutex
+	cfg       config.Config
+	cfgPath   string
+	telemetry forza.Telemetry
+	seen      bool
+	seenAt    time.Time
+	moza      *moza.Driver
+}
+
+func newRuntime(cfg config.Config, cfgPath string) *appRuntime {
+	return &appRuntime{cfg: cfg, cfgPath: cfgPath}
+}
+
+func (r *appRuntime) Config() config.Config {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.cfg
+}
+
+func (r *appRuntime) LatestTelemetry() webui.TelemetrySnapshot {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return webui.TelemetrySnapshot{
+		Telemetry:  r.telemetry,
+		ReceivedAt: r.seenAt,
+		Available:  r.seen,
+	}
+}
+
+func (r *appRuntime) SetTelemetry(telemetry forza.Telemetry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.telemetry = telemetry
+	r.seen = true
+	r.seenAt = time.Now()
+}
+
+func (r *appRuntime) PrintEvery() time.Duration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return time.Duration(float64(time.Second) / r.cfg.PrintHz)
+}
+
+func (r *appRuntime) MozaEnabled() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.moza != nil
+}
+
+func (r *appRuntime) UpdateMozaRPM(currentRPM, maxRPM float32) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	driver := r.moza
+	if driver == nil {
+		return nil
+	}
+	return driver.UpdateRPM(currentRPM, maxRPM)
+}
+
+func (r *appRuntime) ApplyConfig(next config.Config) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if next.ListenAddr != r.cfg.ListenAddr || next.ListenPort != r.cfg.ListenPort {
+		return fmt.Errorf("listen_addr and listen_port changes require restarting the process")
+	}
+	if next.Web.Addr != r.cfg.Web.Addr || next.Web.Enabled != r.cfg.Web.Enabled {
+		return fmt.Errorf("web.enabled and web.addr changes require restarting the process")
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	if err := r.applyMoza(next.Moza, &next); err != nil {
+		return err
+	}
+	r.cfg = next
+	return nil
+}
+
+func (r *appRuntime) SaveConfig(next config.Config) error {
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	return config.Save(r.cfgPath, next)
+}
+
+func (r *appRuntime) PreviewMoza(next config.Moza) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	driver := r.moza
+	if driver == nil {
+		return fmt.Errorf("MOZA preview requires an active MOZA driver")
+	}
+	if next.UpdateHz <= 0 {
+		next.UpdateHz = 20
+	}
+	return driver.Apply(mozaOptionsFromConfig(next))
+}
+
+func (r *appRuntime) Close() {
+	r.mu.Lock()
+	driver := r.moza
+	r.moza = nil
+	r.mu.Unlock()
+	if driver != nil {
+		if err := driver.Close(); err != nil {
+			log.Printf("moza close: %v", err)
+		}
+	}
+}
+
+func (r *appRuntime) applyMoza(next config.Moza, staged *config.Config) error {
+	if !next.Enabled {
+		if r.moza != nil {
+			if err := r.moza.Close(); err != nil {
+				return err
+			}
+			r.moza = nil
+		}
+		return nil
+	}
+
+	if staged != nil {
+		staged.Moza = next
+		if err := staged.Validate(); err != nil {
+			return err
+		}
+	}
+
+	options := mozaOptionsFromConfig(next)
+	currentPort := r.cfg.Moza.Port
+	if r.moza != nil && currentPort == next.Port {
+		return r.moza.Apply(options)
+	}
+	if r.moza != nil {
+		if err := r.moza.Close(); err != nil {
+			return err
+		}
+		r.moza = nil
+	}
+	driver, err := moza.NewDriver(options)
+	if err != nil {
+		return err
+	}
+	r.moza = driver
+	return nil
 }
 
 func mozaOptionsFromConfig(cfg config.Moza) moza.Options {

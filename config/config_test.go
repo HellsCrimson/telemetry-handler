@@ -22,6 +22,9 @@ func TestLoadOptionalUsesDefaultsWhenDefaultFileMissing(t *testing.T) {
 	if cfg.Moza.Enabled || cfg.Moza.UpdateHz != 20 || cfg.Moza.RPMBrightness != 15 || cfg.Moza.ButtonMask != 0x03ff {
 		t.Fatalf("unexpected moza defaults: %+v", cfg.Moza)
 	}
+	if !cfg.Web.Enabled || cfg.Web.Addr != "127.0.0.1:8080" {
+		t.Fatalf("unexpected web defaults: %+v", cfg.Web)
+	}
 }
 
 func TestLoadOverridesDefaults(t *testing.T) {
@@ -30,6 +33,7 @@ func TestLoadOverridesDefaults(t *testing.T) {
 		"listen_addr":"127.0.0.1",
 		"listen_port":20441,
 		"print_hz":10,
+		"web":{"enabled":true,"addr":"127.0.0.1:9090"},
 		"moza":{
 			"enabled":true,
 			"port":"/dev/ttyACM1",
@@ -57,6 +61,9 @@ func TestLoadOverridesDefaults(t *testing.T) {
 	if cfg.Moza.RPMColors[0] != (Color{1, 2, 3}) || cfg.Moza.ButtonColors[0] != (Color{4, 5, 6}) || cfg.Moza.ButtonMask != 7 {
 		t.Fatalf("unexpected moza color config: %+v", cfg.Moza)
 	}
+	if cfg.Web.Addr != "127.0.0.1:9090" {
+		t.Fatalf("unexpected web config: %+v", cfg.Web)
+	}
 }
 
 func TestValidateRejectsReservedForzaPortRange(t *testing.T) {
@@ -74,5 +81,23 @@ func TestValidateRejectsEnabledMozaWithoutPort(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate returned nil, want error")
+	}
+}
+
+func TestSaveWritesIndentedJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := Default()
+	cfg.Web.Addr = "127.0.0.1:9090"
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if loaded.Web.Addr != "127.0.0.1:9090" {
+		t.Fatalf("loaded web addr = %q", loaded.Web.Addr)
 	}
 }

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Telemetry Handler</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Telemetry Handler</h1>
+        <p id="status">Starting</p>
+      </div>
+      <div class="actions">
+        <button id="apply">Apply</button>
+        <button id="save">Save</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="band telemetry">
+        <div class="metric speed">
+          <span>Speed</span>
+          <strong id="speed">0</strong>
+          <small>km/h</small>
+        </div>
+        <div class="metric">
+          <span>Gear</span>
+          <strong id="gear">0</strong>
+        </div>
+        <div class="metric">
+          <span>RPM</span>
+          <strong id="rpm">0</strong>
+          <small id="rpmMax">/ 0</small>
+        </div>
+        <div class="barblock">
+          <div class="rpmbar"><div id="rpmFill"></div></div>
+          <div class="pedals">
+            <label>Throttle <meter id="throttle" min="0" max="255" value="0"></meter></label>
+            <label>Brake <meter id="brake" min="0" max="255" value="0"></meter></label>
+            <label>Clutch <meter id="clutch" min="0" max="255" value="0"></meter></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="band settings">
+        <div class="panel">
+          <h2>Receiver</h2>
+          <label>Listen address <input id="listenAddr" autocomplete="off"></label>
+          <label>Listen port <input id="listenPort" type="number" min="1" max="65535"></label>
+          <label>Print Hz <input id="printHz" type="number" min="0.1" step="0.1"></label>
+        </div>
+
+        <div class="panel">
+          <h2>MOZA</h2>
+          <label class="check"><input id="mozaEnabled" type="checkbox"> Enabled</label>
+          <label>Serial port <input id="mozaPort" autocomplete="off" placeholder="/dev/ttyACM1"></label>
+          <label>Update Hz <input id="mozaUpdateHz" type="number" min="1" step="1"></label>
+          <label>RPM brightness <input id="rpmBrightness" type="range" min="0" max="15"></label>
+          <label>Button mask <input id="buttonMask" type="number" min="0" max="1023"></label>
+          <button id="previewButtons" class="secondary">Preview Buttons</button>
+        </div>
+      </section>
+
+      <section class="band colorgrid">
+        <div>
+          <h2>RPM Colors</h2>
+          <div id="rpmColors" class="swatches"></div>
+        </div>
+        <div>
+          <h2>Button Colors</h2>
+          <div id="buttonColors" class="swatches"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

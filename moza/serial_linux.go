@@ -5,6 +5,7 @@ package moza
 import (
 	"fmt"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -24,6 +25,7 @@ type Options struct {
 }
 
 type Driver struct {
+	mu         sync.Mutex
 	conn       *serialConn
 	updateMin  time.Duration
 	lastUpdate time.Time
@@ -179,6 +181,9 @@ func (d *Driver) Close() error {
 		return nil
 	}
 
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	err := d.writeMasks(0, 0)
 	mode, modeErr := setTelemetryMode(false)
 	if modeErr == nil {
@@ -195,6 +200,9 @@ func (d *Driver) Close() error {
 }
 
 func (d *Driver) UpdateRPM(currentRPM, maxRPM float32) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	mask := rpmMask(currentRPM, maxRPM)
 	now := time.Now()
 	if mask == d.lastMask && now.Sub(d.lastUpdate) < d.updateMin {
@@ -210,6 +218,25 @@ func (d *Driver) UpdateRPM(currentRPM, maxRPM float32) error {
 	d.lastMask = mask
 	d.lastUpdate = now
 	return nil
+}
+
+func (d *Driver) Apply(options Options) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if options.UpdateHz <= 0 {
+		return fmt.Errorf("update hz must be greater than zero")
+	}
+	if options.RPMBrightness > 15 {
+		options.RPMBrightness = 15
+	}
+
+	options.ButtonMask &= 0x03ff
+	d.updateMin = time.Duration(float64(time.Second) / options.UpdateHz)
+	d.buttonMask = options.ButtonMask
+	d.lastMask = ^uint16(0)
+	d.lastUpdate = time.Time{}
+	return d.setup(options)
 }
 
 func (d *Driver) setup(options Options) error {

@@ -12,6 +12,7 @@ const (
 	defaultListenAddr = "0.0.0.0"
 	defaultListenPort = 20440
 	defaultPrintHz    = 5
+	defaultWebAddr    = "127.0.0.1:8080"
 )
 
 type Color [3]uint8
@@ -21,6 +22,7 @@ type Config struct {
 	ListenPort int     `json:"listen_port"`
 	PrintHz    float64 `json:"print_hz"`
 	Moza       Moza    `json:"moza"`
+	Web        Web     `json:"web"`
 }
 
 type Moza struct {
@@ -31,6 +33,11 @@ type Moza struct {
 	RPMColors     [10]Color `json:"rpm_colors"`
 	ButtonColors  [10]Color `json:"button_colors"`
 	ButtonMask    uint16    `json:"button_mask"`
+}
+
+type Web struct {
+	Enabled bool   `json:"enabled"`
+	Addr    string `json:"addr"`
 }
 
 func Default() Config {
@@ -69,6 +76,10 @@ func Default() Config {
 			},
 			ButtonMask: 0x03ff,
 		},
+		Web: Web{
+			Enabled: true,
+			Addr:    defaultWebAddr,
+		},
 	}
 }
 
@@ -106,6 +117,22 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
+func Save(path string, cfg Config) error {
+	if path == "" {
+		path = defaultPath
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o600)
+}
+
 func (c Config) Validate() error {
 	if c.ListenAddr == "" {
 		return fmt.Errorf("listen_addr must not be empty")
@@ -132,6 +159,9 @@ func (c Config) Validate() error {
 		if c.Moza.ButtonMask > 0x03ff {
 			return fmt.Errorf("moza.button_mask must fit the 10 button telemetry bits")
 		}
+	}
+	if c.Web.Enabled && c.Web.Addr == "" {
+		return fmt.Errorf("web.addr must not be empty when web.enabled is true")
 	}
 	return nil
 }
