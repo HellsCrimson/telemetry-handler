@@ -277,6 +277,7 @@ function renderConfig(config) {
   $("listenAddr").value = config.listen_addr;
   $("listenPort").value = config.listen_port;
   $("printHz").value = config.print_hz;
+  $("terminalPrintEnabled").checked = config.terminal_print.enabled;
   $("recordingDir").value = config.recording.dir;
   $("webEnabled").checked = config.web.enabled;
   $("webAddr").value = config.web.addr;
@@ -311,6 +312,7 @@ function readConfig() {
   config.listen_addr = $("listenAddr").value.trim();
   config.listen_port = Number($("listenPort").value);
   config.print_hz = Number($("printHz").value);
+  config.terminal_print.enabled = $("terminalPrintEnabled").checked;
   config.recording.dir = $("recordingDir").value.trim();
   config.web.enabled = $("webEnabled").checked;
   config.web.addr = $("webAddr").value.trim();

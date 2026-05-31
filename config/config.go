@@ -25,6 +25,7 @@ type Config struct {
 	Moza       Moza      `json:"moza"`
 	Web        Web       `json:"web"`
 	Recording  Recording `json:"recording"`
+	Terminal   Terminal  `json:"terminal_print"`
 }
 
 type Moza struct {
@@ -44,6 +45,10 @@ type Web struct {
 
 type Recording struct {
 	Dir string `json:"dir"`
+}
+
+type Terminal struct {
+	Enabled bool `json:"enabled"`
 }
 
 func Default() Config {
@@ -88,6 +93,9 @@ func Default() Config {
 		},
 		Recording: Recording{
 			Dir: defaultRecordDir,
+		},
+		Terminal: Terminal{
+			Enabled: false,
 		},
 	}
 }

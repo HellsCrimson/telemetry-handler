@@ -28,6 +28,9 @@ func TestLoadOptionalUsesDefaultsWhenDefaultFileMissing(t *testing.T) {
 	if cfg.Recording.Dir != "recordings" {
 		t.Fatalf("unexpected recording defaults: %+v", cfg.Recording)
 	}
+	if cfg.Terminal.Enabled {
+		t.Fatalf("unexpected terminal defaults: %+v", cfg.Terminal)
+	}
 }
 
 func TestLoadOverridesDefaults(t *testing.T) {
@@ -38,6 +41,7 @@ func TestLoadOverridesDefaults(t *testing.T) {
 		"print_hz":10,
 		"web":{"enabled":true,"addr":"127.0.0.1:9090"},
 		"recording":{"dir":"captures"},
+		"terminal_print":{"enabled":true},
 		"moza":{
 			"enabled":true,
 			"port":"/dev/ttyACM1",
@@ -70,6 +74,9 @@ func TestLoadOverridesDefaults(t *testing.T) {
 	}
 	if cfg.Recording.Dir != "captures" {
 		t.Fatalf("unexpected recording config: %+v", cfg.Recording)
+	}
+	if !cfg.Terminal.Enabled {
+		t.Fatalf("unexpected terminal config: %+v", cfg.Terminal)
 	}
 }
 

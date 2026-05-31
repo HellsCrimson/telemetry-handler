@@ -2,6 +2,9 @@
   "listen_addr": "0.0.0.0",
   "listen_port": 20440,
   "print_hz": 5,
+  "terminal_print": {
+    "enabled": false
+  },
   "web": {
     "enabled": true,
     "addr": "127.0.0.1:8080"

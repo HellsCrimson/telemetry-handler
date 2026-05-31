@@ -111,10 +111,12 @@ func main() {
 			}
 		}
 
-		now := time.Now()
-		if lastPrint.IsZero() || now.Sub(lastPrint) >= runtime.PrintEvery() {
-			lastPrint = now
-			fmt.Println(formatter.Format(telemetry))
+		if runtime.TerminalPrintEnabled() {
+			now := time.Now()
+			if lastPrint.IsZero() || now.Sub(lastPrint) >= runtime.PrintEvery() {
+				lastPrint = now
+				fmt.Println(formatter.Format(telemetry))
+			}
 		}
 		return nil
 	})
@@ -166,6 +168,12 @@ func (r *appRuntime) PrintEvery() time.Duration {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return time.Duration(float64(time.Second) / r.cfg.PrintHz)
+}
+
+func (r *appRuntime) TerminalPrintEnabled() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.cfg.Terminal.Enabled
 }
 
 func (r *appRuntime) MozaEnabled() bool {
