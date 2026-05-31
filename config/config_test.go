@@ -25,6 +25,9 @@ func TestLoadOptionalUsesDefaultsWhenDefaultFileMissing(t *testing.T) {
 	if !cfg.Web.Enabled || cfg.Web.Addr != "127.0.0.1:8080" {
 		t.Fatalf("unexpected web defaults: %+v", cfg.Web)
 	}
+	if cfg.Recording.Dir != "recordings" {
+		t.Fatalf("unexpected recording defaults: %+v", cfg.Recording)
+	}
 }
 
 func TestLoadOverridesDefaults(t *testing.T) {
@@ -34,6 +37,7 @@ func TestLoadOverridesDefaults(t *testing.T) {
 		"listen_port":20441,
 		"print_hz":10,
 		"web":{"enabled":true,"addr":"127.0.0.1:9090"},
+		"recording":{"dir":"captures"},
 		"moza":{
 			"enabled":true,
 			"port":"/dev/ttyACM1",
@@ -63,6 +67,9 @@ func TestLoadOverridesDefaults(t *testing.T) {
 	}
 	if cfg.Web.Addr != "127.0.0.1:9090" {
 		t.Fatalf("unexpected web config: %+v", cfg.Web)
+	}
+	if cfg.Recording.Dir != "captures" {
+		t.Fatalf("unexpected recording config: %+v", cfg.Recording)
 	}
 }
 

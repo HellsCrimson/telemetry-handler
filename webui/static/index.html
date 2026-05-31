@@ -26,6 +26,7 @@
       <button class="tab" data-tab="suspension">Suspension</button>
       <button class="tab" data-tab="motion">Motion</button>
       <button class="tab" data-tab="position">Position</button>
+      <button class="tab" data-tab="recording">Recording</button>
       <button class="tab" data-tab="moza">MOZA</button>
       <button class="tab" data-tab="settings">Settings</button>
     </nav>
@@ -118,6 +119,38 @@
         </div>
       </section>
 
+      <section class="tabpage" id="tab-recording">
+        <div class="settings">
+          <div class="panel">
+            <h2>Capture</h2>
+            <dl class="kv">
+              <div><dt>Status</dt><dd id="recordingState">Idle</dd></div>
+              <div><dt>File</dt><dd id="recordingFile">-</dd></div>
+              <div><dt>Packets</dt><dd id="recordingPackets">0</dd></div>
+            </dl>
+            <div class="rowactions">
+              <button id="recordStart">Start Recording</button>
+              <button id="recordStop" class="secondary">Stop</button>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>Replay</h2>
+            <label>Recording <select id="recordingSelect"></select></label>
+            <label>Max samples <input id="replayMax" type="number" min="1" step="100" value="5000"></label>
+            <div class="rowactions">
+              <button id="replayLoad">Load</button>
+              <button id="replayPlay" class="secondary">Play</button>
+              <button id="replayStop" class="secondary">Stop</button>
+            </div>
+            <p class="hint" id="replayStatus">No replay loaded</p>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Saved Files</h2>
+          <div class="recordings" id="recordingList"></div>
+        </div>
+      </section>
+
       <section class="tabpage" id="tab-moza">
         <div class="settings">
           <div class="panel">
@@ -158,6 +191,7 @@
             <label>Listen address <input id="listenAddr" autocomplete="off"></label>
             <label>Listen port <input id="listenPort" type="number" min="1" max="65535"></label>
             <label>Print Hz <input id="printHz" type="number" min="0.1" step="0.1"></label>
+            <label>Recording directory <input id="recordingDir" autocomplete="off"></label>
           </div>
           <div class="panel">
             <h2>Web UI</h2>

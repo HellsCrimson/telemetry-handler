@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"time"
 
 	"telemetry-handler/config"
 	"telemetry-handler/forza"
+	"telemetry-handler/recording"
 )
 
 //go:embed static/*
@@ -23,12 +25,22 @@ type Runtime interface {
 	ApplyConfig(config.Config) error
 	SaveConfig(config.Config) error
 	PreviewMoza(config.Moza) error
+	StartRecording() (recording.Status, error)
+	StopRecording() (recording.Status, error)
+	RecordingStatus() recording.Status
+	ListRecordings() ([]recording.Info, error)
+	ReplayRecording(string, int) ([]ReplaySample, error)
 }
 
 type TelemetrySnapshot struct {
 	Telemetry  forza.Telemetry `json:"telemetry"`
 	ReceivedAt time.Time       `json:"received_at"`
 	Available  bool            `json:"available"`
+}
+
+type ReplaySample struct {
+	OffsetMS  uint64          `json:"offset_ms"`
+	Telemetry forza.Telemetry `json:"telemetry"`
 }
 
 type Server struct {
@@ -45,6 +57,11 @@ func NewServer(runtime Runtime) *Server {
 	mux.HandleFunc("PUT /api/config/apply", server.handleApplyConfig)
 	mux.HandleFunc("PUT /api/config/save", server.handleSaveConfig)
 	mux.HandleFunc("POST /api/moza/preview", server.handleMozaPreview)
+	mux.HandleFunc("GET /api/recording/status", server.handleRecordingStatus)
+	mux.HandleFunc("POST /api/recording/start", server.handleRecordingStart)
+	mux.HandleFunc("POST /api/recording/stop", server.handleRecordingStop)
+	mux.HandleFunc("GET /api/recordings", server.handleRecordingList)
+	mux.HandleFunc("GET /api/recordings/replay", server.handleRecordingReplay)
 	mux.Handle("/", server.staticHandler())
 
 	server.handler = mux
@@ -125,6 +142,62 @@ func (s *Server) handleMozaPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "previewed"})
+}
+
+func (s *Server) handleRecordingStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.runtime.RecordingStatus())
+}
+
+func (s *Server) handleRecordingStart(w http.ResponseWriter, r *http.Request) {
+	status, err := s.runtime.StartRecording()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleRecordingStop(w http.ResponseWriter, r *http.Request) {
+	status, err := s.runtime.StopRecording()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleRecordingList(w http.ResponseWriter, r *http.Request) {
+	infos, err := s.runtime.ListRecordings()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, infos)
+}
+
+func (s *Server) handleRecordingReplay(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("name is required"))
+		return
+	}
+
+	maxSamples := 5000
+	if raw := r.URL.Query().Get("max"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("max must be a positive integer"))
+			return
+		}
+		maxSamples = parsed
+	}
+
+	samples, err := s.runtime.ReplayRecording(name, maxSamples)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, samples)
 }
 
 func (s *Server) staticHandler() http.Handler {

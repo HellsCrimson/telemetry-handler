@@ -4,6 +4,14 @@ const state = {
   lastReceivedAt: "",
   charts: {},
   activeTab: "live",
+  replay: {
+    samples: [],
+    index: 0,
+    timer: null,
+    playing: false,
+    active: false,
+    baseTime: 0,
+  },
 };
 
 const HISTORY_MS = 120000;
@@ -269,6 +277,7 @@ function renderConfig(config) {
   $("listenAddr").value = config.listen_addr;
   $("listenPort").value = config.listen_port;
   $("printHz").value = config.print_hz;
+  $("recordingDir").value = config.recording.dir;
   $("webEnabled").checked = config.web.enabled;
   $("webAddr").value = config.web.addr;
   $("mozaEnabled").checked = config.moza.enabled;
@@ -302,6 +311,7 @@ function readConfig() {
   config.listen_addr = $("listenAddr").value.trim();
   config.listen_port = Number($("listenPort").value);
   config.print_hz = Number($("printHz").value);
+  config.recording.dir = $("recordingDir").value.trim();
   config.web.enabled = $("webEnabled").checked;
   config.web.addr = $("webAddr").value.trim();
   config.moza.enabled = $("mozaEnabled").checked;
@@ -475,6 +485,9 @@ function colorForField(field) {
 }
 
 async function refreshTelemetry() {
+  if (state.replay.active) {
+    return;
+  }
   try {
     renderTelemetry(await api("/api/telemetry"));
   } catch (error) {
@@ -504,6 +517,147 @@ async function previewButtons() {
   setStatus("Preview active");
 }
 
+async function refreshRecordingStatus() {
+  try {
+    const status = await api("/api/recording/status");
+    $("recordingState").textContent = status.active ? "Recording" : "Idle";
+    $("recordingFile").textContent = status.name || "-";
+    $("recordingPackets").textContent = status.records || 0;
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function refreshRecordingList() {
+  try {
+    const recordings = await api("/api/recordings");
+    const select = $("recordingSelect");
+    const selected = select.value;
+    select.textContent = "";
+    $("recordingList").textContent = "";
+
+    recordings.forEach((recording) => {
+      const option = document.createElement("option");
+      option.value = recording.name;
+      option.textContent = `${recording.name} (${formatBytes(recording.size)})`;
+      select.append(option);
+
+      const item = document.createElement("button");
+      item.className = "recording";
+      item.type = "button";
+      item.textContent = `${recording.name} · ${formatBytes(recording.size)} · ${new Date(recording.modified).toLocaleString()}`;
+      item.addEventListener("click", () => {
+        select.value = recording.name;
+      });
+      $("recordingList").append(item);
+    });
+    if (selected) {
+      select.value = selected;
+    }
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function startRecording() {
+  await api("/api/recording/start", { method: "POST" });
+  setStatus("Recording started");
+  await refreshRecordingStatus();
+}
+
+async function stopRecording() {
+  await api("/api/recording/stop", { method: "POST" });
+  setStatus("Recording stopped");
+  await refreshRecordingStatus();
+  await refreshRecordingList();
+}
+
+async function loadReplay() {
+  const name = $("recordingSelect").value;
+  if (!name) {
+    setStatus("No recording selected", "error");
+    return;
+  }
+  stopReplay();
+  const max = Number($("replayMax").value) || 5000;
+  state.replay.samples = await api(`/api/recordings/replay?name=${encodeURIComponent(name)}&max=${max}`);
+  state.replay.index = 0;
+  state.replay.active = true;
+  state.replay.baseTime = Date.now();
+  state.history = [];
+  $("replayStatus").textContent = `${state.replay.samples.length} samples loaded`;
+  if (state.replay.samples.length > 0) {
+    renderReplaySample(0);
+  }
+}
+
+function playReplay() {
+  if (state.replay.samples.length === 0) {
+    setStatus("Load a replay first", "error");
+    return;
+  }
+  stopReplayTimer();
+  if (state.replay.index >= state.replay.samples.length) {
+    state.replay.index = 0;
+    state.history = [];
+  }
+  state.replay.active = true;
+  state.replay.playing = true;
+  $("replayStatus").textContent = "Replay playing";
+  stepReplay();
+}
+
+function stopReplay() {
+  stopReplayTimer();
+  state.replay.playing = false;
+  state.replay.active = false;
+  state.replay.index = 0;
+  $("replayStatus").textContent = state.replay.samples.length > 0 ? `${state.replay.samples.length} samples loaded` : "No replay loaded";
+}
+
+function stopReplayTimer() {
+  if (state.replay.timer) {
+    clearTimeout(state.replay.timer);
+    state.replay.timer = null;
+  }
+}
+
+function stepReplay() {
+  if (!state.replay.playing || state.replay.index >= state.replay.samples.length) {
+    state.replay.playing = false;
+    state.replay.active = true;
+    $("replayStatus").textContent = "Replay finished";
+    return;
+  }
+
+  renderReplaySample(state.replay.index);
+  const current = state.replay.samples[state.replay.index];
+  const next = state.replay.samples[state.replay.index + 1];
+  state.replay.index += 1;
+  const delay = next ? Math.max(1, Math.min(250, Number(next.offset_ms - current.offset_ms))) : 1;
+  state.replay.timer = setTimeout(stepReplay, delay);
+}
+
+function renderReplaySample(index) {
+  const sample = state.replay.samples[index];
+  const receivedAt = new Date(state.replay.baseTime + Number(sample.offset_ms)).toISOString();
+  renderTelemetry({
+    available: true,
+    received_at: receivedAt,
+    telemetry: sample.telemetry,
+  });
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function switchTab(name) {
   state.activeTab = name;
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
@@ -515,6 +669,11 @@ function bind() {
   $("apply").addEventListener("click", () => applyConfig().catch((error) => setStatus(error.message, "error")));
   $("save").addEventListener("click", () => saveConfig().catch((error) => setStatus(error.message, "error")));
   $("previewButtons").addEventListener("click", () => previewButtons().catch((error) => setStatus(error.message, "error")));
+  $("recordStart").addEventListener("click", () => startRecording().catch((error) => setStatus(error.message, "error")));
+  $("recordStop").addEventListener("click", () => stopRecording().catch((error) => setStatus(error.message, "error")));
+  $("replayLoad").addEventListener("click", () => loadReplay().catch((error) => setStatus(error.message, "error")));
+  $("replayPlay").addEventListener("click", playReplay);
+  $("replayStop").addEventListener("click", stopReplay);
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => switchTab(tab.dataset.tab));
   });
@@ -524,5 +683,8 @@ function bind() {
 bind();
 ensureCharts();
 loadConfig().catch((error) => setStatus(error.message, "error"));
+refreshRecordingStatus();
+refreshRecordingList();
 refreshTelemetry();
 setInterval(refreshTelemetry, 200);
+setInterval(refreshRecordingStatus, 1000);

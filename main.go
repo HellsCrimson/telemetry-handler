@@ -19,6 +19,7 @@ import (
 	"telemetry-handler/moza"
 	"telemetry-handler/output"
 	"telemetry-handler/receiver"
+	"telemetry-handler/recording"
 	"telemetry-handler/webui"
 )
 
@@ -49,7 +50,12 @@ func main() {
 		log.Printf("loaded config %s: listen=%s:%d print_hz=%.2f", loadedPath, cfg.ListenAddr, cfg.ListenPort, cfg.PrintHz)
 	}
 
-	runtime := newRuntime(cfg, loadedPath)
+	recorder, err := recording.NewManager(cfg.Recording.Dir)
+	if err != nil {
+		log.Fatalf("recording: %v", err)
+	}
+
+	runtime := newRuntime(cfg, loadedPath, recorder)
 	defer runtime.Close()
 
 	if cfg.Moza.Enabled {
@@ -90,6 +96,10 @@ func main() {
 			return err
 		}
 
+		if err := runtime.RecordPacket(packet, time.Now()); err != nil {
+			return err
+		}
+
 		runtime.SetTelemetry(telemetry)
 		if runtime.MozaEnabled() {
 			currentRPM := telemetry.CurrentEngineRpm
@@ -121,10 +131,11 @@ type appRuntime struct {
 	seen      bool
 	seenAt    time.Time
 	moza      *moza.Driver
+	recorder  *recording.Manager
 }
 
-func newRuntime(cfg config.Config, cfgPath string) *appRuntime {
-	return &appRuntime{cfg: cfg, cfgPath: cfgPath}
+func newRuntime(cfg config.Config, cfgPath string, recorder *recording.Manager) *appRuntime {
+	return &appRuntime{cfg: cfg, cfgPath: cfgPath, recorder: recorder}
 }
 
 func (r *appRuntime) Config() config.Config {
@@ -183,6 +194,9 @@ func (r *appRuntime) ApplyConfig(next config.Config) error {
 	if next.Web.Addr != r.cfg.Web.Addr || next.Web.Enabled != r.cfg.Web.Enabled {
 		return fmt.Errorf("web.enabled and web.addr changes require restarting the process")
 	}
+	if next.Recording.Dir != r.cfg.Recording.Dir {
+		return fmt.Errorf("recording.dir changes require restarting the process")
+	}
 	if err := next.Validate(); err != nil {
 		return err
 	}
@@ -213,7 +227,72 @@ func (r *appRuntime) PreviewMoza(next config.Moza) error {
 	return driver.Apply(mozaOptionsFromConfig(next))
 }
 
+func (r *appRuntime) RecordPacket(packet []byte, at time.Time) error {
+	if r.recorder == nil {
+		return nil
+	}
+	return r.recorder.Record(packet, at)
+}
+
+func (r *appRuntime) StartRecording() (recording.Status, error) {
+	if r.recorder == nil {
+		return recording.Status{}, fmt.Errorf("recording is not available")
+	}
+	return r.recorder.Start()
+}
+
+func (r *appRuntime) StopRecording() (recording.Status, error) {
+	if r.recorder == nil {
+		return recording.Status{}, nil
+	}
+	return r.recorder.Stop()
+}
+
+func (r *appRuntime) RecordingStatus() recording.Status {
+	if r.recorder == nil {
+		return recording.Status{}
+	}
+	return r.recorder.Status()
+}
+
+func (r *appRuntime) ListRecordings() ([]recording.Info, error) {
+	if r.recorder == nil {
+		return nil, fmt.Errorf("recording is not available")
+	}
+	return r.recorder.List()
+}
+
+func (r *appRuntime) ReplayRecording(name string, maxSamples int) ([]webui.ReplaySample, error) {
+	if r.recorder == nil {
+		return nil, fmt.Errorf("recording is not available")
+	}
+
+	rawSamples, err := r.recorder.Read(name, maxSamples)
+	if err != nil {
+		return nil, err
+	}
+
+	samples := make([]webui.ReplaySample, 0, len(rawSamples))
+	for _, raw := range rawSamples {
+		telemetry, err := forza.ParseFH6Packet(raw.Packet)
+		if err != nil {
+			return nil, err
+		}
+		samples = append(samples, webui.ReplaySample{
+			OffsetMS:  raw.OffsetMS,
+			Telemetry: telemetry,
+		})
+	}
+	return samples, nil
+}
+
 func (r *appRuntime) Close() {
+	if r.recorder != nil {
+		if _, err := r.recorder.Stop(); err != nil {
+			log.Printf("recording stop: %v", err)
+		}
+	}
+
 	r.mu.Lock()
 	driver := r.moza
 	r.moza = nil

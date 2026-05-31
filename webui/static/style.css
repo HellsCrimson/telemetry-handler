@@ -270,9 +270,45 @@ input {
   width: 100%;
 }
 
+select {
+  background: #0b0d0f;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  min-height: 36px;
+  padding: 7px 9px;
+  width: 100%;
+}
+
 input[type="checkbox"] {
   min-height: 18px;
   width: 18px;
+}
+
+.rowactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.hint {
+  margin-top: 12px;
+}
+
+.recordings {
+  display: grid;
+  gap: 8px;
+}
+
+.recording {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 500;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .colorgrid {

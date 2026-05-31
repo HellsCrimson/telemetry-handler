@@ -13,16 +13,18 @@ const (
 	defaultListenPort = 20440
 	defaultPrintHz    = 5
 	defaultWebAddr    = "127.0.0.1:8080"
+	defaultRecordDir  = "recordings"
 )
 
 type Color [3]uint8
 
 type Config struct {
-	ListenAddr string  `json:"listen_addr"`
-	ListenPort int     `json:"listen_port"`
-	PrintHz    float64 `json:"print_hz"`
-	Moza       Moza    `json:"moza"`
-	Web        Web     `json:"web"`
+	ListenAddr string    `json:"listen_addr"`
+	ListenPort int       `json:"listen_port"`
+	PrintHz    float64   `json:"print_hz"`
+	Moza       Moza      `json:"moza"`
+	Web        Web       `json:"web"`
+	Recording  Recording `json:"recording"`
 }
 
 type Moza struct {
@@ -38,6 +40,10 @@ type Moza struct {
 type Web struct {
 	Enabled bool   `json:"enabled"`
 	Addr    string `json:"addr"`
+}
+
+type Recording struct {
+	Dir string `json:"dir"`
 }
 
 func Default() Config {
@@ -79,6 +85,9 @@ func Default() Config {
 		Web: Web{
 			Enabled: true,
 			Addr:    defaultWebAddr,
+		},
+		Recording: Recording{
+			Dir: defaultRecordDir,
 		},
 	}
 }
@@ -162,6 +171,9 @@ func (c Config) Validate() error {
 	}
 	if c.Web.Enabled && c.Web.Addr == "" {
 		return fmt.Errorf("web.addr must not be empty when web.enabled is true")
+	}
+	if c.Recording.Dir == "" {
+		return fmt.Errorf("recording.dir must not be empty")
 	}
 	return nil
 }

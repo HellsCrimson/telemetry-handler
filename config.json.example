@@ -6,6 +6,9 @@
     "enabled": true,
     "addr": "127.0.0.1:8080"
   },
+  "recording": {
+    "dir": "recordings"
+  },
   "moza": {
     "enabled": true,
     "port": "/dev/ttyACM1",
