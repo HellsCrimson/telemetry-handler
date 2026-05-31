@@ -214,6 +214,18 @@ meter {
 .readout {
   min-height: 70px;
   padding: 12px;
+  position: relative;
+}
+
+.readout::before {
+  background: var(--accent, var(--line));
+  border-radius: 8px 0 0 8px;
+  bottom: -1px;
+  content: "";
+  left: -1px;
+  position: absolute;
+  top: -1px;
+  width: 4px;
 }
 
 .readout span {

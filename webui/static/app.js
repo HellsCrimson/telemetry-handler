@@ -16,6 +16,38 @@ const cornerFields = {
   RR: "RearRight",
 };
 
+const semanticColors = {
+  Accel: "#42d477",
+  Throttle: "#42d477",
+  Brake: "#e85d5d",
+  Clutch: "#4aa3ff",
+  HandBrake: "#f2a541",
+  Steer: "#d8dde3",
+  NormalizedDrivingLine: "#9bdb6d",
+  NormalizedAIBrakeDifference: "#ff7aa2",
+  Speed: "#42d477",
+  CurrentEngineRpm: "#e6c84f",
+  EngineMaxRpm: "#9aa3ad",
+  Power: "#b88cff",
+  Torque: "#ffb86b",
+  Boost: "#4aa3ff",
+  Fuel: "#7bd88f",
+  FL: "#42d477",
+  FR: "#e6c84f",
+  RL: "#4aa3ff",
+  RR: "#e85d5d",
+  X: "#e85d5d",
+  Y: "#42d477",
+  Z: "#4aa3ff",
+  Yaw: "#e6c84f",
+  Pitch: "#4aa3ff",
+  Roll: "#e85d5d",
+  BestLap: "#42d477",
+  LastLap: "#4aa3ff",
+  CurrentLap: "#e6c84f",
+  CurrentRaceTime: "#d8dde3",
+};
+
 const readoutGroups = {
   engineReadouts: [
     ["Engine Max RPM", "EngineMaxRpm", 0],
@@ -91,8 +123,8 @@ const chartDefinitions = {
   chartLive: {
     title: "Live Overview",
     fields: [
-      { name: "Speed km/h", field: "Speed", transform: (v) => v * 3.6 },
-      { name: "RPM x100", field: "CurrentEngineRpm", transform: (v) => v / 100 },
+      { name: "Speed km/h", field: "Speed", color: semanticColors.Speed, transform: (v) => v * 3.6 },
+      { name: "RPM x100", field: "CurrentEngineRpm", color: semanticColors.CurrentEngineRpm, transform: (v) => v / 100 },
       { name: "Throttle", field: "Accel" },
       { name: "Brake", field: "Brake" },
     ],
@@ -102,13 +134,13 @@ const chartDefinitions = {
     fields: [
       { name: "RPM", field: "CurrentEngineRpm" },
       { name: "Max RPM", field: "EngineMaxRpm" },
-      { name: "Speed km/h", field: "Speed", transform: (v) => v * 3.6 },
+      { name: "Speed km/h", field: "Speed", color: semanticColors.Speed, transform: (v) => v * 3.6 },
     ],
   },
   chartEnginePower: {
     title: "Powertrain",
     fields: [
-      { name: "Power kW", field: "Power", transform: (v) => v / 1000 },
+      { name: "Power kW", field: "Power", color: semanticColors.Power, transform: (v) => v / 1000 },
       { name: "Torque Nm", field: "Torque" },
       { name: "Boost", field: "Boost" },
       { name: "Fuel", field: "Fuel" },
@@ -182,10 +214,10 @@ const chartDefinitions = {
   chartLapTiming: {
     title: "Lap Timing",
     fields: [
-      { name: "Best", field: "BestLap" },
-      { name: "Last", field: "LastLap" },
-      { name: "Current", field: "CurrentLap" },
-      { name: "Race Time", field: "CurrentRaceTime" },
+      { name: "Best", field: "BestLap", color: semanticColors.BestLap },
+      { name: "Last", field: "LastLap", color: semanticColors.LastLap },
+      { name: "Current", field: "CurrentLap", color: semanticColors.CurrentLap },
+      { name: "Race Time", field: "CurrentRaceTime", color: semanticColors.CurrentRaceTime },
     ],
   },
 };
@@ -206,11 +238,12 @@ function cornerSeries(prefix) {
   return Object.entries(cornerFields).map(([name, suffix]) => ({
     name,
     field: `${prefix}${suffix}`,
+    color: semanticColors[name],
   }));
 }
 
 function axisSeries(prefix) {
-  return ["X", "Y", "Z"].map((axis) => ({ name: axis, field: `${prefix}${axis}` }));
+  return ["X", "Y", "Z"].map((axis) => ({ name: axis, field: `${prefix}${axis}`, color: semanticColors[axis] }));
 }
 
 function rgbToHex(rgb) {
@@ -334,6 +367,10 @@ function renderReadouts(t) {
     rows.forEach(([label, field, digits, transform, suffix]) => {
       const item = document.createElement("div");
       item.className = "readout";
+      const color = colorForField({ name: label, field });
+      if (color) {
+        item.style.setProperty("--accent", color);
+      }
       const name = document.createElement("span");
       name.textContent = label;
       const value = document.createElement("strong");
@@ -381,6 +418,8 @@ function updateCharts() {
       type: "line",
       showSymbol: false,
       smooth: true,
+      lineStyle: { width: 2, color: colorForField(field) },
+      itemStyle: { color: colorForField(field) },
       data: state.history.map((sample) => {
         const value = Number(sample.telemetry[field.field] ?? 0);
         return field.transform ? field.transform(value) : value;
@@ -399,6 +438,40 @@ function updateCharts() {
       animation: false,
     });
   });
+}
+
+function colorForField(field) {
+  if (field.color) {
+    return field.color;
+  }
+  if (semanticColors[field.field]) {
+    return semanticColors[field.field];
+  }
+  if (semanticColors[field.name]) {
+    return semanticColors[field.name];
+  }
+  if (field.field?.endsWith("FrontLeft")) {
+    return semanticColors.FL;
+  }
+  if (field.field?.endsWith("FrontRight")) {
+    return semanticColors.FR;
+  }
+  if (field.field?.endsWith("RearLeft")) {
+    return semanticColors.RL;
+  }
+  if (field.field?.endsWith("RearRight")) {
+    return semanticColors.RR;
+  }
+  if (field.field?.endsWith("X")) {
+    return semanticColors.X;
+  }
+  if (field.field?.endsWith("Y")) {
+    return semanticColors.Y;
+  }
+  if (field.field?.endsWith("Z")) {
+    return semanticColors.Z;
+  }
+  return "#d8dde3";
 }
 
 async function refreshTelemetry() {
