@@ -12,6 +12,7 @@ const state = {
     active: false,
     baseTime: 0,
   },
+  trackVisualizer: null,
 };
 
 const HISTORY_MS = 120000;
@@ -55,6 +56,288 @@ const semanticColors = {
   CurrentLap: "#e6c84f",
   CurrentRaceTime: "#d8dde3",
 };
+
+class TrackVisualizer {
+  constructor(canvasId) {
+    this.canvas = $(canvasId);
+    if (!this.canvas) {
+      console.warn(`Canvas element with id "${canvasId}" not found`);
+      return;
+    }
+    this.ctx = this.canvas.getContext('2d');
+    this.positionData = [];
+    this.currentIndex = -1;
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
+    this.isDragging = false;
+    this.dragStartX = 0;
+    this.dragStartY = 0;
+    this.trackMinX = 0;
+    this.trackMinZ = 0;
+    this.trackMaxX = 100;
+    this.trackMaxZ = 100;
+    this.carSize = 20;
+    this.padding = 40;
+
+    this.setupEventListeners();
+    this.dpiScale = window.devicePixelRatio || 1;
+    this.resizeCanvas();
+    window.addEventListener('resize', () => this.resizeCanvas());
+  }
+
+  resizeCanvas() {
+    if (!this.canvas) return;
+    const rect = this.canvas.getBoundingClientRect();
+    this.canvas.width = rect.width * this.dpiScale;
+    this.canvas.height = rect.height * this.dpiScale;
+    this.ctx.scale(this.dpiScale, this.dpiScale);
+    this.render();
+  }
+
+  setupEventListeners() {
+    if (!this.canvas) return;
+    this.canvas.addEventListener('wheel', (e) => this.handleZoom(e));
+    this.canvas.addEventListener('mousedown', (e) => this.handleDragStart(e));
+    this.canvas.addEventListener('mousemove', (e) => this.handleDrag(e));
+    this.canvas.addEventListener('mouseup', () => this.handleDragEnd());
+    this.canvas.addEventListener('mouseleave', () => this.handleDragEnd());
+    const resetBtn = $('trackResetView');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => this.resetView());
+    }
+  }
+
+  handleZoom(e) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    this.zoom *= delta;
+    this.zoom = Math.max(0.1, Math.min(10, this.zoom));
+    this.render();
+  }
+
+  handleDragStart(e) {
+    this.isDragging = true;
+    this.dragStartX = e.clientX;
+    this.dragStartY = e.clientY;
+  }
+
+  handleDrag(e) {
+    if (!this.isDragging) return;
+    const dx = e.clientX - this.dragStartX;
+    const dy = e.clientY - this.dragStartY;
+    this.panX += dx;
+    this.panY += dy;
+    this.dragStartX = e.clientX;
+    this.dragStartY = e.clientY;
+    this.render();
+  }
+
+  handleDragEnd() {
+    this.isDragging = false;
+  }
+
+  resetView() {
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
+    this.render();
+  }
+
+  updateData(history) {
+    this.positionData = history.map((sample) => ({
+      x: Number(sample.telemetry.PositionX),
+      z: Number(sample.telemetry.PositionZ),
+      yaw: Number(sample.telemetry.Yaw),
+      pitch: Number(sample.telemetry.Pitch),
+      roll: Number(sample.telemetry.Roll),
+      speed: Number(sample.telemetry.Speed),
+    }));
+
+    if (this.positionData.length > 0) {
+      this.computeBounds();
+    }
+  }
+
+  setCurrentIndex(index) {
+    this.currentIndex = Math.min(index, this.positionData.length - 1);
+    this.render();
+  }
+
+  computeBounds() {
+    let minX = Infinity, maxX = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+
+    this.positionData.forEach((pos) => {
+      minX = Math.min(minX, pos.x);
+      maxX = Math.max(maxX, pos.x);
+      minZ = Math.min(minZ, pos.z);
+      maxZ = Math.max(maxZ, pos.z);
+    });
+
+    this.trackMinX = minX;
+    this.trackMaxX = maxX;
+    this.trackMinZ = minZ;
+    this.trackMaxZ = maxZ;
+
+    const rangeX = maxX - minX || 100;
+    const rangeZ = maxZ - minZ || 100;
+    const padding = Math.max(rangeX, rangeZ) * 0.1;
+    this.trackMinX -= padding;
+    this.trackMinZ -= padding;
+    this.trackMaxX += padding;
+    this.trackMaxZ += padding;
+  }
+
+  worldToCanvas(x, z) {
+    const trackWidth = this.trackMaxX - this.trackMinX;
+    const trackHeight = this.trackMaxZ - this.trackMinZ;
+    const canvasWidth = this.canvas.width / this.dpiScale - this.padding * 2;
+    const canvasHeight = this.canvas.height / this.dpiScale - this.padding * 2;
+
+    const scale = Math.min(canvasWidth / trackWidth, canvasHeight / trackHeight) * this.zoom;
+    const centerX = this.canvas.width / this.dpiScale / 2;
+    const centerY = this.canvas.height / this.dpiScale / 2;
+
+    const trackCenterX = (this.trackMinX + this.trackMaxX) / 2;
+    const trackCenterZ = (this.trackMinZ + this.trackMaxZ) / 2;
+
+    const canvasX = centerX + (x - trackCenterX) * scale + this.panX;
+    const canvasY = centerY + (z - trackCenterZ) * scale + this.panY;
+
+    return { canvasX, canvasY };
+  }
+
+  drawTrackPath() {
+    if (this.positionData.length < 2) return;
+
+    this.ctx.strokeStyle = '#42d477';
+    this.ctx.lineWidth = 2;
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+    this.ctx.beginPath();
+
+    const start = this.worldToCanvas(this.positionData[0].x, this.positionData[0].z);
+    this.ctx.moveTo(start.canvasX, start.canvasY);
+
+    for (let i = 1; i < this.positionData.length; i++) {
+      const pos = this.worldToCanvas(this.positionData[i].x, this.positionData[i].z);
+      this.ctx.lineTo(pos.canvasX, pos.canvasY);
+    }
+    this.ctx.stroke();
+  }
+
+  drawCar(index) {
+    if (index < 0 || index >= this.positionData.length) return;
+
+    const data = this.positionData[index];
+    const pos = this.worldToCanvas(data.x, data.z);
+
+    this.ctx.save();
+    this.ctx.translate(pos.canvasX, pos.canvasY);
+    this.ctx.rotate((data.yaw * Math.PI) / 180);
+
+    const width = this.carSize * 0.8;
+    const height = this.carSize;
+
+    const rollInfluence = Math.max(-1, Math.min(1, data.roll / 45));
+    const pitchInfluence = Math.max(-1, Math.min(1, data.pitch / 45));
+
+    const baseColor = [66, 212, 119];
+    const hue = 120 + rollInfluence * 30;
+    const saturation = 80 + pitchInfluence * 20;
+
+    this.ctx.fillStyle = `hsl(${hue}, ${saturation}%, 45%)`;
+    this.ctx.fillRect(-width / 2, -height / 2, width, height);
+
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(-width / 2, -height / 2, width, height);
+
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.fillRect(-width / 2 + 2, -height / 2 + 2, width - 4, height / 3 - 2);
+
+    this.ctx.restore();
+  }
+
+  drawGrid() {
+    const trackWidth = this.trackMaxX - this.trackMinX;
+    const trackHeight = this.trackMaxZ - this.trackMinZ;
+    const canvasWidth = this.canvas.width / this.dpiScale - this.padding * 2;
+    const canvasHeight = this.canvas.height / this.dpiScale - this.padding * 2;
+
+    const scale = Math.min(canvasWidth / trackWidth, canvasHeight / trackHeight) * this.zoom;
+
+    this.ctx.strokeStyle = 'rgba(212, 218, 227, 0.1)';
+    this.ctx.lineWidth = 1;
+    this.ctx.font = '11px Inter, sans-serif';
+    this.ctx.fillStyle = 'rgba(169, 176, 183, 0.5)';
+
+    const gridStep = this.getGridStep(trackWidth, scale);
+    const startX = Math.floor(this.trackMinX / gridStep) * gridStep;
+    const startZ = Math.floor(this.trackMinZ / gridStep) * gridStep;
+
+    for (let x = startX; x <= this.trackMaxX; x += gridStep) {
+      const pos = this.worldToCanvas(x, this.trackMinZ);
+      this.ctx.beginPath();
+      this.ctx.moveTo(pos.canvasX, this.padding);
+      this.ctx.lineTo(pos.canvasX, this.canvas.height / this.dpiScale - this.padding);
+      this.ctx.stroke();
+    }
+
+    for (let z = startZ; z <= this.trackMaxZ; z += gridStep) {
+      const pos = this.worldToCanvas(this.trackMinX, z);
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.padding, pos.canvasY);
+      this.ctx.lineTo(this.canvas.width / this.dpiScale - this.padding, pos.canvasY);
+      this.ctx.stroke();
+    }
+  }
+
+  getGridStep(trackWidth, scale) {
+    const pixelStep = 50;
+    const worldStep = pixelStep / scale;
+    const magnitude = Math.floor(Math.log10(worldStep));
+    const mantissa = Math.ceil(worldStep / Math.pow(10, magnitude));
+    return mantissa * Math.pow(10, magnitude);
+  }
+
+  render() {
+    if (!this.canvas || !this.ctx) return;
+    const width = this.canvas.width / this.dpiScale;
+    const height = this.canvas.height / this.dpiScale;
+
+    this.ctx.fillStyle = '#080a0c';
+    this.ctx.fillRect(0, 0, width, height);
+
+    this.ctx.strokeStyle = '#343a40';
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(
+      this.padding,
+      this.padding,
+      width - this.padding * 2,
+      height - this.padding * 2
+    );
+
+    this.ctx.save();
+    this.ctx.beginPath();
+    this.ctx.rect(this.padding, this.padding, width - this.padding * 2, height - this.padding * 2);
+    this.ctx.clip();
+
+    this.drawGrid();
+    this.drawTrackPath();
+    if (this.currentIndex >= 0) {
+      this.drawCar(this.currentIndex);
+    }
+
+    this.ctx.restore();
+
+    const zoomText = `${(this.zoom * 100).toFixed(0)}%`;
+    const sampleCount = this.positionData.length;
+    const infoText = `Samples: ${sampleCount} | Zoom: ${zoomText}`;
+    $('trackInfo').textContent = infoText;
+  }
+}
 
 const readoutGroups = {
   engineReadouts: [
@@ -214,10 +497,6 @@ const chartDefinitions = {
       { name: "Pitch", field: "Pitch" },
       { name: "Roll", field: "Roll" },
     ],
-  },
-  chartPosition: {
-    title: "Position",
-    fields: axisSeries("Position"),
   },
   chartLapTiming: {
     title: "Lap Timing",
@@ -412,6 +691,9 @@ function ensureCharts() {
       state.charts[id] = echarts.init($(id), "dark", { renderer: "canvas" });
     }
   });
+  if (!state.trackVisualizer) {
+    state.trackVisualizer = new TrackVisualizer("trackCanvas");
+  }
 }
 
 function updateCharts() {
@@ -450,6 +732,10 @@ function updateCharts() {
       animation: false,
     });
   });
+  if (state.trackVisualizer) {
+    state.trackVisualizer.updateData(state.history);
+    state.trackVisualizer.setCurrentIndex(state.history.length - 1);
+  }
 }
 
 function colorForField(field) {
@@ -588,6 +874,13 @@ async function loadReplay() {
   state.replay.baseTime = Date.now();
   state.history = [];
   $("replayStatus").textContent = `${state.replay.samples.length} samples loaded`;
+  if (state.trackVisualizer) {
+    const replayHistory = state.replay.samples.map((sample) => ({
+      time: state.replay.baseTime + Number(sample.offset_ms),
+      telemetry: sample.telemetry,
+    }));
+    state.trackVisualizer.updateData(replayHistory);
+  }
   if (state.replay.samples.length > 0) {
     renderReplaySample(0);
   }
@@ -648,6 +941,9 @@ function renderReplaySample(index) {
     received_at: receivedAt,
     telemetry: sample.telemetry,
   });
+  if (state.trackVisualizer) {
+    state.trackVisualizer.setCurrentIndex(index);
+  }
 }
 
 function formatBytes(bytes) {

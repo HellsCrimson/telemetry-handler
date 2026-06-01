@@ -113,8 +113,14 @@
 
       <section class="tabpage" id="tab-position">
         <div class="readouts" id="positionReadouts"></div>
+        <div class="track-container">
+          <div class="track-controls">
+            <button id="trackResetView">Reset View</button>
+            <span id="trackInfo">Zoom: scroll | Pan: drag</span>
+          </div>
+          <canvas id="trackCanvas"></canvas>
+        </div>
         <div class="charts">
-          <div class="chart" id="chartPosition"></div>
           <div class="chart" id="chartLapTiming"></div>
         </div>
       </section>
