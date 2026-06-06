@@ -18,6 +18,7 @@ import (
 	"telemetry-handler/forza"
 	"telemetry-handler/moza"
 	"telemetry-handler/output"
+	"telemetry-handler/overlay"
 	"telemetry-handler/receiver"
 	"telemetry-handler/recording"
 	"telemetry-handler/webui"
@@ -25,6 +26,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "", "path to JSON config file")
+	overlayMode := flag.Bool("overlay", false, "run the native Wayland telemetry overlay and exit")
 	mozaTest := flag.Bool("moza-test", false, "run an experimental MOZA wheel light test and exit")
 	mozaPort := flag.String("moza-port", "", "MOZA serial device path for -moza-test, for example /dev/ttyACM1")
 	mozaDuration := flag.Duration("moza-test-duration", 10*time.Second, "duration for -moza-test")
@@ -48,6 +50,15 @@ func main() {
 		log.Printf("using defaults: listen=%s:%d print_hz=%.2f", cfg.ListenAddr, cfg.ListenPort, cfg.PrintHz)
 	} else {
 		log.Printf("loaded config %s: listen=%s:%d print_hz=%.2f", loadedPath, cfg.ListenAddr, cfg.ListenPort, cfg.PrintHz)
+	}
+
+	if *overlayMode {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := overlay.Run(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
+			log.Fatalf("overlay: %v", err)
+		}
+		return
 	}
 
 	recorder, err := recording.NewManager(cfg.Recording.Dir)

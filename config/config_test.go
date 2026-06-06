@@ -31,6 +31,9 @@ func TestLoadOptionalUsesDefaultsWhenDefaultFileMissing(t *testing.T) {
 	if cfg.Terminal.Enabled {
 		t.Fatalf("unexpected terminal defaults: %+v", cfg.Terminal)
 	}
+	if cfg.Overlay.Enabled || cfg.Overlay.UpdateHz != 10 || cfg.Overlay.Opacity != 0.85 {
+		t.Fatalf("unexpected overlay defaults: %+v", cfg.Overlay)
+	}
 }
 
 func TestLoadOverridesDefaults(t *testing.T) {
@@ -42,6 +45,20 @@ func TestLoadOverridesDefaults(t *testing.T) {
 		"web":{"enabled":true,"addr":"127.0.0.1:9090"},
 		"recording":{"dir":"captures"},
 		"terminal_print":{"enabled":true},
+		"overlay":{
+			"enabled":true,
+			"source_url":"http://127.0.0.1:9090/api/telemetry",
+			"output":"DP-1",
+			"width":360,
+			"height":160,
+			"anchor":"top-right",
+			"margin_top":24,
+			"margin_right":24,
+			"margin_bottom":0,
+			"margin_left":0,
+			"update_hz":20,
+			"opacity":0.9
+		},
 		"moza":{
 			"enabled":true,
 			"port":"/dev/ttyACM1",
@@ -78,6 +95,9 @@ func TestLoadOverridesDefaults(t *testing.T) {
 	if !cfg.Terminal.Enabled {
 		t.Fatalf("unexpected terminal config: %+v", cfg.Terminal)
 	}
+	if !cfg.Overlay.Enabled || cfg.Overlay.Output != "DP-1" || cfg.Overlay.WidthValue() != 360 || cfg.Overlay.HeightValue() != 160 || cfg.Overlay.Anchor != "top-right" {
+		t.Fatalf("unexpected overlay config: %+v", cfg.Overlay)
+	}
 }
 
 func TestValidateRejectsReservedForzaPortRange(t *testing.T) {
@@ -96,6 +116,71 @@ func TestValidateRejectsEnabledMozaWithoutPort(t *testing.T) {
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate returned nil, want error")
 	}
+}
+
+func TestValidateOverlayModeAcceptsCompleteOverlay(t *testing.T) {
+	cfg := Default()
+	cfg.Overlay = Overlay{
+		Enabled:      true,
+		Width:        intPtr(360),
+		Height:       intPtr(160),
+		Anchor:       "bottom-right",
+		MarginTop:    intPtr(0),
+		MarginRight:  intPtr(20),
+		MarginBottom: intPtr(20),
+		MarginLeft:   intPtr(0),
+		UpdateHz:     15,
+		Opacity:      0.8,
+	}
+
+	if err := cfg.ValidateOverlayMode(); err != nil {
+		t.Fatalf("ValidateOverlayMode returned error: %v", err)
+	}
+}
+
+func TestValidateOverlayModeRejectsDisabledOverlay(t *testing.T) {
+	cfg := Default()
+
+	if err := cfg.ValidateOverlayMode(); err == nil {
+		t.Fatal("ValidateOverlayMode returned nil, want error")
+	}
+}
+
+func TestValidateOverlayModeRejectsIncompletePlacement(t *testing.T) {
+	cfg := Default()
+	cfg.Overlay.Enabled = true
+	cfg.Overlay.Width = intPtr(360)
+	cfg.Overlay.Height = intPtr(160)
+	cfg.Overlay.UpdateHz = 15
+	cfg.Overlay.Opacity = 0.8
+
+	if err := cfg.ValidateOverlayMode(); err == nil {
+		t.Fatal("ValidateOverlayMode returned nil, want error")
+	}
+}
+
+func TestValidateOverlayModeRejectsInvalidOpacity(t *testing.T) {
+	cfg := Default()
+	cfg.Overlay = Overlay{
+		Enabled:      true,
+		Width:        intPtr(360),
+		Height:       intPtr(160),
+		Anchor:       "top",
+		MarginTop:    intPtr(0),
+		MarginRight:  intPtr(0),
+		MarginBottom: intPtr(0),
+		MarginLeft:   intPtr(0),
+		UpdateHz:     15,
+		Opacity:      1.1,
+	}
+
+	if err := cfg.ValidateOverlayMode(); err == nil {
+		t.Fatal("ValidateOverlayMode returned nil, want error")
+	}
+}
+
+func intPtr(value int) *int {
+	return &value
 }
 
 func TestSaveWritesIndentedJSON(t *testing.T) {

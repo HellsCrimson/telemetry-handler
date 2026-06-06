@@ -12,6 +12,20 @@
   "recording": {
     "dir": "recordings"
   },
+  "overlay": {
+    "enabled": false,
+    "source_url": "",
+    "output": "",
+    "width": 360,
+    "height": 160,
+    "anchor": "top-right",
+    "margin_top": 24,
+    "margin_right": 24,
+    "margin_bottom": 0,
+    "margin_left": 0,
+    "update_hz": 15,
+    "opacity": 0.85
+  },
   "moza": {
     "enabled": true,
     "port": "/dev/ttyACM1",
