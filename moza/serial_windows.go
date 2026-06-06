@@ -1,10 +1,9 @@
-//go:build linux
+//go:build windows
 
 package moza
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"syscall"
 	"time"
@@ -12,7 +11,7 @@ import (
 )
 
 type serialConn struct {
-	file *os.File
+	handle syscall.Handle
 }
 
 type Options struct {
@@ -33,59 +32,169 @@ type Driver struct {
 	buttonMask uint16
 }
 
+var (
+	kernel32 = syscall.NewLazyDLL("kernel32.dll")
+
+	procCreateFileW           = kernel32.NewProc("CreateFileW")
+	procCloseHandle           = kernel32.NewProc("CloseHandle")
+	procWriteFile             = kernel32.NewProc("WriteFile")
+	procGetCommState          = kernel32.NewProc("GetCommState")
+	procSetCommState          = kernel32.NewProc("SetCommState")
+	procSetCommTimeouts       = kernel32.NewProc("SetCommTimeouts")
+	procPurgeComm             = kernel32.NewProc("PurgeComm")
+	procGetLastError          = kernel32.NewProc("GetLastError")
+)
+
+const (
+	invalidHandle = ^syscall.Handle(0)
+
+	genericRead       = 0x80000000
+	genericWrite      = 0x40000000
+	fileShareRead     = 0x00000001
+	fileShareWrite    = 0x00000002
+	openExisting      = 3
+	fileAttributeNormal = 0x80
+
+	purgeRxAbort = 0x0002
+	purgeTxAbort = 0x0001
+	purgeRxClear = 0x0008
+	purgeTxClear = 0x0004
+
+	cbr115200 = 115200
+)
+
+type dcb struct {
+	DCBlength uint32
+	BaudRate  uint32
+	Flags     uint32
+	wReserved uint16
+	XonLim    uint16
+	XoffLim   uint16
+	ByteSize  byte
+	Parity    byte
+	StopBits  byte
+	XonChar   byte
+	XoffChar  byte
+	ErrorChar byte
+	EofChar   byte
+	EvtChar   byte
+	wReserved1 uint16
+}
+
+type commTimeouts struct {
+	ReadIntervalTimeout        uint32
+	ReadTotalTimeoutMultiplier uint32
+	ReadTotalTimeoutConstant   uint32
+	WriteTotalTimeoutMultiplier uint32
+	WriteTotalTimeoutConstant   uint32
+}
+
 func openSerial(path string) (*serialConn, error) {
-	fd, err := syscall.Open(path, syscall.O_RDWR|syscall.O_NOCTTY, 0)
+	pathPtr, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err
 	}
 
-	file := os.NewFile(uintptr(fd), path)
-	conn := &serialConn{file: file}
-	if err := configureSerial(fd); err != nil {
-		file.Close()
+	handle, _, err := procCreateFileW.Call(
+		uintptr(unsafe.Pointer(pathPtr)),
+		genericRead|genericWrite,
+		0,
+		0,
+		openExisting,
+		fileAttributeNormal,
+		0,
+	)
+
+	if handle == uintptr(invalidHandle) {
+		return nil, fmt.Errorf("CreateFileW failed: %w", err)
+	}
+
+	conn := &serialConn{handle: syscall.Handle(handle)}
+
+	if err := configureSerial(conn); err != nil {
+		conn.Close()
 		return nil, err
 	}
+
 	return conn, nil
 }
 
-func (c *serialConn) Close() error {
-	return c.file.Close()
+func configureSerial(conn *serialConn) error {
+	// Get current DCB settings
+	dcb := dcb{DCBlength: uint32(unsafe.Sizeof(dcb{}))}
+	ok, _, err := procGetCommState.Call(uintptr(conn.handle), uintptr(unsafe.Pointer(&dcb)))
+	if ok == 0 {
+		return fmt.Errorf("GetCommState failed: %w", err)
+	}
+
+	// Configure for 115200 baud, 8 data bits, no parity, 1 stop bit
+	dcb.BaudRate = cbr115200
+	dcb.ByteSize = 8
+	dcb.Parity = 0 // NOPARITY
+	dcb.StopBits = 0 // ONESTOPBIT
+	dcb.Flags = 0x0001 // fBinary
+
+	ok, _, err = procSetCommState.Call(uintptr(conn.handle), uintptr(unsafe.Pointer(&dcb)))
+	if ok == 0 {
+		return fmt.Errorf("SetCommState failed: %w", err)
+	}
+
+	// Set timeouts
+	timeouts := commTimeouts{
+		ReadIntervalTimeout:         50,
+		ReadTotalTimeoutMultiplier:  0,
+		ReadTotalTimeoutConstant:    500,
+		WriteTotalTimeoutMultiplier: 0,
+		WriteTotalTimeoutConstant:   500,
+	}
+
+	ok, _, err = procSetCommTimeouts.Call(uintptr(conn.handle), uintptr(unsafe.Pointer(&timeouts)))
+	if ok == 0 {
+		return fmt.Errorf("SetCommTimeouts failed: %w", err)
+	}
+
+	// Purge any pending data
+	ok, _, err = procPurgeComm.Call(uintptr(conn.handle), purgeRxAbort|purgeTxAbort|purgeRxClear|purgeTxClear)
+	if ok == 0 {
+		return fmt.Errorf("PurgeComm failed: %w", err)
+	}
+
+	return nil
 }
 
-func (c *serialConn) WriteFrame(frame []byte) error {
-	n, err := c.file.Write(frame)
-	if err != nil {
-		return err
-	}
-	if n != len(frame) {
-		return fmt.Errorf("short serial write: wrote %d of %d bytes", n, len(frame))
+func (c *serialConn) Close() error {
+	if c.handle != invalidHandle {
+		ok, _, err := procCloseHandle.Call(uintptr(c.handle))
+		if ok == 0 {
+			return fmt.Errorf("CloseHandle failed: %w", err)
+		}
+		c.handle = invalidHandle
 	}
 	return nil
 }
 
-func configureSerial(fd int) error {
-	var termios syscall.Termios
-	if err := ioctl(fd, syscall.TCGETS, uintptr(unsafe.Pointer(&termios))); err != nil {
-		return err
+func (c *serialConn) WriteFrame(frame []byte) error {
+	if c.handle == invalidHandle {
+		return fmt.Errorf("serial port is closed")
 	}
 
-	termios.Iflag = syscall.IGNPAR
-	termios.Oflag = 0
-	termios.Lflag = 0
-	termios.Cflag = syscall.B115200 | syscall.CS8 | syscall.CREAD | syscall.CLOCAL
-	termios.Cc[syscall.VMIN] = 0
-	termios.Cc[syscall.VTIME] = 5
-	termios.Ispeed = syscall.B115200
-	termios.Ospeed = syscall.B115200
+	var bytesWritten uint32
+	ok, _, err := procWriteFile.Call(
+		uintptr(c.handle),
+		uintptr(unsafe.Pointer(&frame[0])),
+		uintptr(len(frame)),
+		uintptr(unsafe.Pointer(&bytesWritten)),
+		0,
+	)
 
-	return ioctl(fd, syscall.TCSETS, uintptr(unsafe.Pointer(&termios)))
-}
-
-func ioctl(fd int, request uint, arg uintptr) error {
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(request), arg)
-	if errno != 0 {
-		return errno
+	if ok == 0 {
+		return fmt.Errorf("WriteFile failed: %w", err)
 	}
+
+	if bytesWritten != uint32(len(frame)) {
+		return fmt.Errorf("short serial write: wrote %d of %d bytes", bytesWritten, len(frame))
+	}
+
 	return nil
 }
 
