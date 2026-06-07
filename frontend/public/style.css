@@ -16,6 +16,10 @@
   box-sizing: border-box;
 }
 
+html, body, #root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -111,10 +115,6 @@ button.secondary {
 
 main {
   padding: 20px 24px 32px;
-}
-
-.tabpage {
-  display: none;
 }
 
 .tabpage.active {

@@ -153,6 +153,9 @@ func TestValidateOverlayModeRejectsIncompletePlacement(t *testing.T) {
 	cfg.Overlay.Height = intPtr(160)
 	cfg.Overlay.UpdateHz = 15
 	cfg.Overlay.Opacity = 0.8
+	// Default() now fills in placement defaults, so clear a margin to exercise
+	// the incomplete-placement rejection.
+	cfg.Overlay.MarginTop = nil
 
 	if err := cfg.ValidateOverlayMode(); err == nil {
 		t.Fatal("ValidateOverlayMode returned nil, want error")

@@ -8,15 +8,18 @@ import (
 )
 
 const (
-	defaultPath           = "config.json"
-	defaultListenAddr     = "0.0.0.0"
-	defaultListenPort     = 20440
-	defaultPrintHz        = 5
-	defaultWebAddr        = "127.0.0.1:8080"
-	defaultRecordDir      = "recordings"
-	defaultOverlayHz      = 10
-	defaultOpacity        = 0.85
-	defaultSteeringSize   = 60
+	defaultPath          = "config.json"
+	defaultListenAddr    = "0.0.0.0"
+	defaultListenPort    = 20440
+	defaultPrintHz       = 5
+	defaultWebAddr       = "127.0.0.1:8080"
+	defaultRecordDir     = "recordings"
+	defaultOverlayHz     = 10
+	defaultOpacity       = 0.85
+	defaultSteeringSize  = 60
+	defaultOverlayWidth  = 320
+	defaultOverlayHeight = 120
+	defaultOverlayAnchor = "top-left"
 )
 
 type Color [3]uint8
@@ -56,21 +59,21 @@ type Terminal struct {
 }
 
 type Overlay struct {
-	Enabled         bool    `json:"enabled"`
-	SourceURL       string  `json:"source_url,omitempty"`
-	Output          string  `json:"output,omitempty"`
-	Width           *int    `json:"width,omitempty"`
-	Height          *int    `json:"height,omitempty"`
-	Anchor          string  `json:"anchor"`
-	MarginTop       *int    `json:"margin_top,omitempty"`
-	MarginRight     *int    `json:"margin_right,omitempty"`
-	MarginBottom    *int    `json:"margin_bottom,omitempty"`
-	MarginLeft      *int    `json:"margin_left,omitempty"`
-	UpdateHz        float64 `json:"update_hz"`
-	Opacity         float64 `json:"opacity"`
-	ShowSteering    bool    `json:"show_steering"`
-	SteeringImagePath string `json:"steering_image_path,omitempty"`
-	SteeringSize    *int    `json:"steering_size,omitempty"`
+	Enabled           bool    `json:"enabled"`
+	SourceURL         string  `json:"source_url,omitempty"`
+	Output            string  `json:"output,omitempty"`
+	Width             *int    `json:"width,omitempty"`
+	Height            *int    `json:"height,omitempty"`
+	Anchor            string  `json:"anchor"`
+	MarginTop         *int    `json:"margin_top,omitempty"`
+	MarginRight       *int    `json:"margin_right,omitempty"`
+	MarginBottom      *int    `json:"margin_bottom,omitempty"`
+	MarginLeft        *int    `json:"margin_left,omitempty"`
+	UpdateHz          float64 `json:"update_hz"`
+	Opacity           float64 `json:"opacity"`
+	ShowSteering      bool    `json:"show_steering"`
+	SteeringImagePath string  `json:"steering_image_path,omitempty"`
+	SteeringSize      *int    `json:"steering_size,omitempty"`
 }
 
 func Default() Config {
@@ -121,6 +124,13 @@ func Default() Config {
 		},
 		Overlay: Overlay{
 			Enabled:      false,
+			Width:        intPtr(defaultOverlayWidth),
+			Height:       intPtr(defaultOverlayHeight),
+			Anchor:       defaultOverlayAnchor,
+			MarginTop:    intPtr(0),
+			MarginRight:  intPtr(0),
+			MarginBottom: intPtr(0),
+			MarginLeft:   intPtr(0),
 			UpdateHz:     defaultOverlayHz,
 			Opacity:      defaultOpacity,
 			ShowSteering: true,
@@ -220,33 +230,74 @@ func (c Config) ValidateOverlayMode() error {
 		return err
 	}
 	if !c.Overlay.Enabled {
-		return fmt.Errorf("overlay.enabled must be true when running -overlay")
+		return fmt.Errorf("overlay.enabled must be true to run the overlay")
 	}
-	if c.Overlay.Width == nil {
-		return fmt.Errorf("overlay.width must be set when running -overlay")
+	return c.Overlay.Validate()
+}
+
+// WithDefaults returns a copy of the overlay config with any unset geometry
+// fields filled in, so the overlay can be enabled at runtime even when the
+// loaded config did not specify a full overlay block.
+func (o Overlay) WithDefaults() Overlay {
+	if o.Width == nil {
+		o.Width = intPtr(defaultOverlayWidth)
 	}
-	if *c.Overlay.Width <= 0 {
-		return fmt.Errorf("overlay.width must be greater than 0 when running -overlay")
+	if o.Height == nil {
+		o.Height = intPtr(defaultOverlayHeight)
 	}
-	if c.Overlay.Height == nil {
-		return fmt.Errorf("overlay.height must be set when running -overlay")
+	if o.Anchor == "" {
+		o.Anchor = defaultOverlayAnchor
 	}
-	if *c.Overlay.Height <= 0 {
-		return fmt.Errorf("overlay.height must be greater than 0 when running -overlay")
+	if o.MarginTop == nil {
+		o.MarginTop = intPtr(0)
 	}
-	if !validOverlayAnchor(c.Overlay.Anchor) {
+	if o.MarginRight == nil {
+		o.MarginRight = intPtr(0)
+	}
+	if o.MarginBottom == nil {
+		o.MarginBottom = intPtr(0)
+	}
+	if o.MarginLeft == nil {
+		o.MarginLeft = intPtr(0)
+	}
+	if o.UpdateHz <= 0 {
+		o.UpdateHz = defaultOverlayHz
+	}
+	if o.SteeringSize == nil {
+		o.SteeringSize = intPtr(defaultSteeringSize)
+	}
+	return o
+}
+
+// Validate checks the overlay-specific geometry and rendering fields. It does
+// not require Overlay.Enabled, so it can be used to validate a config before
+// turning the overlay on.
+func (o Overlay) Validate() error {
+	if o.Width == nil {
+		return fmt.Errorf("overlay.width must be set")
+	}
+	if *o.Width <= 0 {
+		return fmt.Errorf("overlay.width must be greater than 0")
+	}
+	if o.Height == nil {
+		return fmt.Errorf("overlay.height must be set")
+	}
+	if *o.Height <= 0 {
+		return fmt.Errorf("overlay.height must be greater than 0")
+	}
+	if !validOverlayAnchor(o.Anchor) {
 		return fmt.Errorf("overlay.anchor must be one of top-left, top-right, bottom-left, bottom-right, top, bottom")
 	}
-	if c.Overlay.MarginTop == nil || c.Overlay.MarginRight == nil || c.Overlay.MarginBottom == nil || c.Overlay.MarginLeft == nil {
-		return fmt.Errorf("overlay margins must all be set when running -overlay")
+	if o.MarginTop == nil || o.MarginRight == nil || o.MarginBottom == nil || o.MarginLeft == nil {
+		return fmt.Errorf("overlay margins must all be set")
 	}
-	if *c.Overlay.MarginTop < 0 || *c.Overlay.MarginRight < 0 || *c.Overlay.MarginBottom < 0 || *c.Overlay.MarginLeft < 0 {
+	if *o.MarginTop < 0 || *o.MarginRight < 0 || *o.MarginBottom < 0 || *o.MarginLeft < 0 {
 		return fmt.Errorf("overlay margins must be greater than or equal to 0")
 	}
-	if c.Overlay.UpdateHz <= 0 {
+	if o.UpdateHz <= 0 {
 		return fmt.Errorf("overlay.update_hz must be greater than 0")
 	}
-	if c.Overlay.Opacity < 0 || c.Overlay.Opacity > 1 {
+	if o.Opacity < 0 || o.Opacity > 1 {
 		return fmt.Errorf("overlay.opacity must be between 0 and 1")
 	}
 	return nil

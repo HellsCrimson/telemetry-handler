@@ -2,10 +2,7 @@ package overlay
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"strings"
+	"sync"
 	"time"
 
 	"telemetry-handler/config"
@@ -18,33 +15,87 @@ type Backend interface {
 	Run(context.Context, config.Overlay, <-chan HUD) error
 }
 
-type telemetrySnapshot struct {
-	Telemetry  forza.Telemetry `json:"telemetry"`
-	ReceivedAt time.Time       `json:"received_at"`
-	Available  bool            `json:"available"`
+// Source provides the latest telemetry snapshot for the overlay to render.
+// It is polled in-process (no HTTP) at the overlay's configured update rate.
+type Source func() (telemetry forza.Telemetry, available bool, receivedAt time.Time)
+
+// Manager owns the lifecycle of a single running overlay so it can be toggled
+// on and off at runtime from the UI.
+type Manager struct {
+	mu     sync.Mutex
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
-func Run(ctx context.Context, cfg config.Config) error {
-	if err := cfg.ValidateOverlayMode(); err != nil {
+func NewManager() *Manager {
+	return &Manager{}
+}
+
+// Running reports whether an overlay is currently active.
+func (m *Manager) Running() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cancel != nil
+}
+
+// Start launches the overlay bound to parent's lifetime. It is a no-op if an
+// overlay is already running. The overlay config is validated (with defaults
+// filled in) before the backend is created.
+func (m *Manager) Start(parent context.Context, ov config.Overlay, source Source) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.cancel != nil {
+		return nil
+	}
+
+	ov = ov.WithDefaults()
+	if err := ov.Validate(); err != nil {
 		return err
 	}
 
-	sourceURL := overlaySourceURL(cfg)
-	client := &http.Client{Timeout: 3 * time.Second}
-	first, err := fetchTelemetry(ctx, client, sourceURL)
-	if err != nil {
-		return fmt.Errorf("overlay telemetry source %s: %w", sourceURL, err)
-	}
+	ctx, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	m.cancel = cancel
+	m.done = done
 
+	go func() {
+		defer close(done)
+		_ = run(ctx, ov, source)
+		m.mu.Lock()
+		m.cancel = nil
+		m.done = nil
+		m.mu.Unlock()
+	}()
+	return nil
+}
+
+// Stop cancels the running overlay and waits for it to exit. It is safe to call
+// when no overlay is running.
+func (m *Manager) Stop() {
+	m.mu.Lock()
+	cancel := m.cancel
+	done := m.done
+	m.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
+	if done != nil {
+		<-done
+	}
+}
+
+func run(ctx context.Context, ov config.Overlay, source Source) error {
 	updates := make(chan HUD, 1)
-	updates <- FormatHUD(first.Telemetry, first.Available, first.ReceivedAt, time.Now())
+	telemetry, available, receivedAt := source()
+	updates <- FormatHUD(telemetry, available, receivedAt, time.Now())
 
 	errc := make(chan error, 1)
 	go func() {
-		errc <- newBackend().Run(ctx, cfg.Overlay, updates)
+		errc <- newBackend().Run(ctx, ov, updates)
 	}()
 
-	ticker := time.NewTicker(time.Duration(float64(time.Second) / cfg.Overlay.UpdateHz))
+	ticker := time.NewTicker(time.Duration(float64(time.Second) / ov.UpdateHz))
 	defer ticker.Stop()
 
 	for {
@@ -54,11 +105,8 @@ func Run(ctx context.Context, cfg config.Config) error {
 		case err := <-errc:
 			return err
 		case now := <-ticker.C:
-			snapshot, err := fetchTelemetry(ctx, client, sourceURL)
-			if err != nil {
-				snapshot = telemetrySnapshot{ReceivedAt: now, Available: false}
-			}
-			hud := FormatHUD(snapshot.Telemetry, snapshot.Available, snapshot.ReceivedAt, now)
+			telemetry, available, receivedAt := source()
+			hud := FormatHUD(telemetry, available, receivedAt, now)
 			select {
 			case updates <- hud:
 			default:
@@ -67,38 +115,4 @@ func Run(ctx context.Context, cfg config.Config) error {
 			}
 		}
 	}
-}
-
-func overlaySourceURL(cfg config.Config) string {
-	if cfg.Overlay.SourceURL != "" {
-		return cfg.Overlay.SourceURL
-	}
-	addr := cfg.Web.Addr
-	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
-		return strings.TrimRight(addr, "/") + "/api/telemetry"
-	}
-	return "http://" + addr + "/api/telemetry"
-}
-
-func fetchTelemetry(ctx context.Context, client *http.Client, url string) (telemetrySnapshot, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return telemetrySnapshot{}, err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return telemetrySnapshot{}, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return telemetrySnapshot{}, fmt.Errorf("GET returned %s", resp.Status)
-	}
-
-	var snapshot telemetrySnapshot
-	if err := json.NewDecoder(resp.Body).Decode(&snapshot); err != nil {
-		return telemetrySnapshot{}, err
-	}
-	return snapshot, nil
 }
