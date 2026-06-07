@@ -5,6 +5,7 @@ package overlay
 import (
 	"context"
 	"fmt"
+	"log"
 	"runtime"
 	"strconv"
 	"strings"
@@ -156,9 +157,10 @@ type windowsMonitor struct {
 }
 
 type overlayWindow struct {
-	hwnd    uintptr
-	monitor windowsMonitor
-	cfg     config.Overlay
+	hwnd          uintptr
+	monitor       windowsMonitor
+	cfg           config.Overlay
+	steeringWheel *SteeringWheel
 }
 
 func newBackend() Backend {
@@ -245,7 +247,22 @@ func createOverlayWindow(cfg config.Overlay, monitor windowsMonitor) (*overlayWi
 	}
 	procShowWindow.Call(hwnd, swShowNoActivate)
 
-	win := &overlayWindow{hwnd: hwnd, monitor: monitor, cfg: cfg}
+	var steeringWheel *SteeringWheel
+	if cfg.ShowSteering {
+		if cfg.SteeringImagePath != "" {
+			sw, err := LoadSteeringWheel(cfg.SteeringImagePath, cfg.SteeringSizeValue())
+			if err != nil {
+				log.Printf("failed to load steering wheel image: %v, using default", err)
+				steeringWheel = NewSteeringWheel(cfg.SteeringSizeValue())
+			} else {
+				steeringWheel = sw
+			}
+		} else {
+			steeringWheel = NewSteeringWheel(cfg.SteeringSizeValue())
+		}
+	}
+
+	win := &overlayWindow{hwnd: hwnd, monitor: monitor, cfg: cfg, steeringWheel: steeringWheel}
 	return win, nil
 }
 
@@ -290,6 +307,14 @@ func (w *overlayWindow) render(hud HUD) error {
 
 	pixels := unsafe.Slice((*uint32)(unsafe.Pointer(bits)), width*height)
 	drawHUD(pixels, width, height, w.cfg.Opacity, hud)
+
+	if w.steeringWheel != nil {
+		steeringSize := w.cfg.SteeringSizeValue()
+		steeringX := width - steeringSize - 64
+		steeringY := 8
+		steeringPixels := w.steeringWheel.GetRotated(hud.SteeringAngle)
+		drawSteering(pixels, width, height, steeringX, steeringY, steeringSize, w.cfg.Opacity, steeringPixels)
+	}
 
 	dst := point{X: int32(x), Y: int32(y)}
 	src := point{}

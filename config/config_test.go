@@ -179,10 +179,6 @@ func TestValidateOverlayModeRejectsInvalidOpacity(t *testing.T) {
 	}
 }
 
-func intPtr(value int) *int {
-	return &value
-}
-
 func TestSaveWritesIndentedJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	cfg := Default()

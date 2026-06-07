@@ -8,14 +8,15 @@ import (
 )
 
 const (
-	defaultPath       = "config.json"
-	defaultListenAddr = "0.0.0.0"
-	defaultListenPort = 20440
-	defaultPrintHz    = 5
-	defaultWebAddr    = "127.0.0.1:8080"
-	defaultRecordDir  = "recordings"
-	defaultOverlayHz  = 10
-	defaultOpacity    = 0.85
+	defaultPath           = "config.json"
+	defaultListenAddr     = "0.0.0.0"
+	defaultListenPort     = 20440
+	defaultPrintHz        = 5
+	defaultWebAddr        = "127.0.0.1:8080"
+	defaultRecordDir      = "recordings"
+	defaultOverlayHz      = 10
+	defaultOpacity        = 0.85
+	defaultSteeringSize   = 60
 )
 
 type Color [3]uint8
@@ -55,18 +56,21 @@ type Terminal struct {
 }
 
 type Overlay struct {
-	Enabled      bool    `json:"enabled"`
-	SourceURL    string  `json:"source_url,omitempty"`
-	Output       string  `json:"output,omitempty"`
-	Width        *int    `json:"width,omitempty"`
-	Height       *int    `json:"height,omitempty"`
-	Anchor       string  `json:"anchor"`
-	MarginTop    *int    `json:"margin_top,omitempty"`
-	MarginRight  *int    `json:"margin_right,omitempty"`
-	MarginBottom *int    `json:"margin_bottom,omitempty"`
-	MarginLeft   *int    `json:"margin_left,omitempty"`
-	UpdateHz     float64 `json:"update_hz"`
-	Opacity      float64 `json:"opacity"`
+	Enabled         bool    `json:"enabled"`
+	SourceURL       string  `json:"source_url,omitempty"`
+	Output          string  `json:"output,omitempty"`
+	Width           *int    `json:"width,omitempty"`
+	Height          *int    `json:"height,omitempty"`
+	Anchor          string  `json:"anchor"`
+	MarginTop       *int    `json:"margin_top,omitempty"`
+	MarginRight     *int    `json:"margin_right,omitempty"`
+	MarginBottom    *int    `json:"margin_bottom,omitempty"`
+	MarginLeft      *int    `json:"margin_left,omitempty"`
+	UpdateHz        float64 `json:"update_hz"`
+	Opacity         float64 `json:"opacity"`
+	ShowSteering    bool    `json:"show_steering"`
+	SteeringImagePath string `json:"steering_image_path,omitempty"`
+	SteeringSize    *int    `json:"steering_size,omitempty"`
 }
 
 func Default() Config {
@@ -116,9 +120,11 @@ func Default() Config {
 			Enabled: false,
 		},
 		Overlay: Overlay{
-			Enabled:  false,
-			UpdateHz: defaultOverlayHz,
-			Opacity:  defaultOpacity,
+			Enabled:      false,
+			UpdateHz:     defaultOverlayHz,
+			Opacity:      defaultOpacity,
+			ShowSteering: true,
+			SteeringSize: intPtr(defaultSteeringSize),
 		},
 	}
 }
@@ -295,4 +301,15 @@ func (o Overlay) MarginLeftValue() int {
 		return 0
 	}
 	return *o.MarginLeft
+}
+
+func (o Overlay) SteeringSizeValue() int {
+	if o.SteeringSize == nil {
+		return defaultSteeringSize
+	}
+	return *o.SteeringSize
+}
+
+func intPtr(v int) *int {
+	return &v
 }

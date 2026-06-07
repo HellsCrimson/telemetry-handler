@@ -179,3 +179,51 @@ var font = map[rune][7]byte{
 	'Y': {0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04},
 	'?': {0x0e, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04},
 }
+
+func drawSteering(pixels []uint32, width, height int, x, y, steeringSize int, opacity float64, steeringPixels []uint32) {
+for sy := 0; sy < steeringSize; sy++ {
+for sx := 0; sx < steeringSize; sx++ {
+dx := x + sx
+dy := y + sy
+if dx < 0 || dx >= width || dy < 0 || dy >= height {
+continue
+}
+
+srcPx := steeringPixels[sy*steeringSize+sx]
+if srcPx == 0 {
+continue
+}
+
+a := (srcPx >> 24) & 0xff
+if a == 0 {
+continue
+}
+
+blend := blendAlpha(pixels[dy*width+dx], srcPx, uint8(float64(a)*opacity))
+pixels[dy*width+dx] = blend
+}
+}
+}
+
+func blendAlpha(dst, src uint32, opacity uint8) uint32 {
+dstA := (dst >> 24) & 0xff
+dstR := (dst >> 16) & 0xff
+dstG := (dst >> 8) & 0xff
+dstB := dst & 0xff
+
+srcA := ((src >> 24) & 0xff) * uint32(opacity) / 255
+srcR := ((src >> 16) & 0xff)
+srcG := ((src >> 8) & 0xff)
+srcB := (src & 0xff)
+
+outA := dstA + srcA - dstA*srcA/255
+if outA == 0 {
+return 0
+}
+
+outR := (dstR*dstA + srcR*srcA) / outA
+outG := (dstG*dstA + srcG*srcA) / outA
+outB := (dstB*dstA + srcB*srcA) / outA
+
+return (outA << 24) | (outR << 16) | (outG << 8) | outB
+}

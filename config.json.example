@@ -24,7 +24,10 @@
     "margin_bottom": 0,
     "margin_left": 0,
     "update_hz": 15,
-    "opacity": 0.85
+    "opacity": 0.85,
+    "show_steering": true,
+    "steering_image_path": "",
+    "steering_size": 60
   },
   "moza": {
     "enabled": true,

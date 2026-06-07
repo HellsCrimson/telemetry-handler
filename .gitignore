@@ -1,2 +1,4 @@
 config.json
 telemetry-handler
+telemetry-handler.exe
+*.gz

@@ -9,16 +9,17 @@ import (
 )
 
 type HUD struct {
-	Connected bool
-	Stale     bool
-	SpeedKPH  string
-	Gear      string
-	RPM       string
-	MaxRPM    string
-	RPMRatio  float64
-	Throttle  float64
-	Brake     float64
-	Clutch    float64
+	Connected    bool
+	Stale        bool
+	SpeedKPH     string
+	Gear         string
+	RPM          string
+	MaxRPM       string
+	RPMRatio     float64
+	Throttle     float64
+	Brake        float64
+	Clutch       float64
+	SteeringAngle int8
 }
 
 func FormatHUD(t forza.Telemetry, available bool, receivedAt time.Time, now time.Time) HUD {
@@ -29,16 +30,17 @@ func FormatHUD(t forza.Telemetry, available bool, receivedAt time.Time, now time
 	currentRPM := float64(t.CurrentEngineRpm)
 
 	return HUD{
-		Connected: connected,
-		Stale:     stale,
-		SpeedKPH:  fmt.Sprintf("%.0f", float64(t.Speed)*3.6),
-		Gear:      fmt.Sprintf("%d", t.Gear),
-		RPM:       fmt.Sprintf("%.0f", currentRPM),
-		MaxRPM:    fmt.Sprintf("%.0f", maxRPM),
-		RPMRatio:  clampRatio(currentRPM, maxRPM),
-		Throttle:  pedalRatio(t.Accel),
-		Brake:     pedalRatio(t.Brake),
-		Clutch:    pedalRatio(t.Clutch),
+		Connected:     connected,
+		Stale:         stale,
+		SpeedKPH:      fmt.Sprintf("%.0f", float64(t.Speed)*3.6),
+		Gear:          fmt.Sprintf("%d", t.Gear),
+		RPM:           fmt.Sprintf("%.0f", currentRPM),
+		MaxRPM:        fmt.Sprintf("%.0f", maxRPM),
+		RPMRatio:      clampRatio(currentRPM, maxRPM),
+		Throttle:      pedalRatio(t.Accel),
+		Brake:         pedalRatio(t.Brake),
+		Clutch:        pedalRatio(t.Clutch),
+		SteeringAngle: t.Steer,
 	}
 }
 
