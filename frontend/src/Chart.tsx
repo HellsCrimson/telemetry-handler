@@ -2,14 +2,27 @@ import { useEffect, useRef } from "react";
 import * as echarts from "echarts";
 import { type ChartDefinition, type HistorySample, colorForField } from "./telemetry";
 
+// Highlight shades an x-range of the chart (by sample index) — used by the
+// Review tab to mark where the analysis found an issue.
+export interface Highlight {
+  fromIndex: number;
+  toIndex: number;
+  color: string;
+  name?: string;
+}
+
 interface ChartProps {
   definition: ChartDefinition;
   history: HistorySample[];
+  // xLabels overrides the default wall-clock x-axis labels (the Review tab uses
+  // relative lap time instead).
+  xLabels?: string[];
+  highlights?: Highlight[];
 }
 
 // Chart renders a single ECharts line panel from the rolling telemetry history,
 // matching the option set used by the original dashboard.
-export default function Chart({ definition, history }: ChartProps) {
+export default function Chart({ definition, history, xLabels, highlights }: ChartProps) {
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
 
@@ -29,12 +42,13 @@ export default function Chart({ definition, history }: ChartProps) {
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    const labels = history.map((sample) => new Date(sample.time).toLocaleTimeString());
-    const series = definition.fields.map((field) => ({
+    const labels = xLabels ?? history.map((sample) => new Date(sample.time).toLocaleTimeString());
+    const series: Record<string, unknown>[] = definition.fields.map((field) => ({
       name: field.name,
       type: "line" as const,
       showSymbol: false,
       smooth: true,
+      sampling: "lttb",
       lineStyle: { width: 2, color: colorForField(field) },
       itemStyle: { color: colorForField(field) },
       data: history.map((sample) => {
@@ -42,6 +56,18 @@ export default function Chart({ definition, history }: ChartProps) {
         return field.transform ? field.transform(value) : value;
       }),
     }));
+
+    // markArea lives on a series; attach the highlight zones to the first one.
+    if (highlights && highlights.length > 0 && series.length > 0) {
+      series[0].markArea = {
+        silent: true,
+        label: { show: false },
+        data: highlights.map((h) => [
+          { xAxis: h.fromIndex, itemStyle: { color: h.color }, name: h.name },
+          { xAxis: h.toIndex },
+        ]),
+      };
+    }
 
     chart.setOption({
       backgroundColor: "transparent",
@@ -54,7 +80,7 @@ export default function Chart({ definition, history }: ChartProps) {
       series,
       animation: false,
     });
-  }, [definition, history]);
+  }, [definition, history, xLabels, highlights]);
 
   return <div className="chart" ref={elRef} />;
 }

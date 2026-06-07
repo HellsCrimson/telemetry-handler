@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as analysis$0 from "../analysis/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as config$0 from "../config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -24,39 +27,50 @@ import * as recording$0 from "../recording/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+/**
+ * AnalyzeRecording replays a saved recording and returns coaching analysis: a
+ * per-lap scorecard plus a list of detected events. Pass maxSamples 0 to analyze
+ * the whole recording.
+ */
+export function AnalyzeRecording(name: string, maxSamples: number): $CancellablePromise<analysis$0.Report> {
+    return $Call.ByID(1855007469, name, maxSamples).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function ApplyConfig(cfg: config$0.Config): $CancellablePromise<config$0.Config> {
     return $Call.ByID(4123060480, cfg).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
 export function GetConfig(): $CancellablePromise<config$0.Config> {
     return $Call.ByID(400336676).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
 export function GetOverlayStatus(): $CancellablePromise<$models.OverlayStatus> {
     return $Call.ByID(2207766068).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
 }
 
 export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(3118608443).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
 export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
     return $Call.ByID(3996014961).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType4($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
@@ -66,7 +80,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
@@ -85,22 +99,23 @@ export function SetOverlayEnabled(enabled: boolean): $CancellablePromise<void> {
 
 export function StartRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(982748349).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
 export function StopRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(1374983877).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = config$0.Config.createFrom;
-const $$createType1 = $models.OverlayStatus.createFrom;
-const $$createType2 = recording$0.Status.createFrom;
-const $$createType3 = $models.TelemetrySnapshot.createFrom;
-const $$createType4 = recording$0.Info.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $models.ReplaySample.createFrom;
-const $$createType7 = $Create.Array($$createType6);
+const $$createType0 = analysis$0.Report.createFrom;
+const $$createType1 = config$0.Config.createFrom;
+const $$createType2 = $models.OverlayStatus.createFrom;
+const $$createType3 = recording$0.Status.createFrom;
+const $$createType4 = $models.TelemetrySnapshot.createFrom;
+const $$createType5 = recording$0.Info.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = $models.ReplaySample.createFrom;
+const $$createType8 = $Create.Array($$createType7);

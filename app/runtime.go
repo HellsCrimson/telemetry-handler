@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"telemetry-handler/analysis"
 	"telemetry-handler/config"
 	"telemetry-handler/forza"
 	"telemetry-handler/moza"
@@ -195,6 +196,21 @@ func (r *Runtime) ReplayRecording(name string, maxSamples int) ([]ReplaySample, 
 		})
 	}
 	return samples, nil
+}
+
+// AnalyzeRecording replays a recording and runs the coaching analysis over it,
+// returning a per-lap scorecard and a list of detected events. maxSamples caps
+// the number of frames read (0 = all); pass 0 for a full-session review.
+func (r *Runtime) AnalyzeRecording(name string, maxSamples int) (analysis.Report, error) {
+	samples, err := r.ReplayRecording(name, maxSamples)
+	if err != nil {
+		return analysis.Report{}, err
+	}
+	frames := make([]analysis.Frame, len(samples))
+	for i, s := range samples {
+		frames[i] = analysis.Frame{OffsetMS: s.OffsetMS, Telemetry: s.Telemetry}
+	}
+	return analysis.Analyze(name, frames), nil
 }
 
 func (r *Runtime) Close() {

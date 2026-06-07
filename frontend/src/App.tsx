@@ -10,7 +10,7 @@ import {
   rgbToHex,
   hexToRgb,
 } from "./telemetry";
-import Chart from "./Chart";
+import Chart, { type Highlight } from "./Chart";
 import { TrackVisualizer } from "./TrackVisualizer";
 
 const HISTORY_MS = 120000;
@@ -26,6 +26,7 @@ const TABS = [
   ["motion", "Motion"],
   ["position", "Position"],
   ["recording", "Recording"],
+  ["review", "Review"],
   ["moza", "MOZA"],
   ["settings", "Settings"],
 ] as const;
@@ -44,6 +45,19 @@ export default function App() {
   const [replayMax, setReplayMax] = useState(5000);
   const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [overlayRunning, setOverlayRunning] = useState(false);
+
+  const [report, setReport] = useState<any>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [reviewHistory, setReviewHistory] = useState<HistorySample[]>([]);
+  const [minDurationMs, setMinDurationMs] = useState(150);
+
+  // Filter out blips shorter than the user-set threshold. Point events
+  // (duration 0, e.g. a short shift) are always kept — they have no span.
+  const filteredEvents = useMemo<any[]>(() => {
+    const all: any[] = report?.events ?? [];
+    return all.filter((e) => e.duration_ms === 0 || e.duration_ms >= minDurationMs);
+  }, [report, minDurationMs]);
+  const hiddenCount = (report?.events?.length ?? 0) - filteredEvents.length;
 
   // Replay loop state kept in a ref to avoid stale closures in the setTimeout
   // chain; mirrored into React state for rendering.
@@ -195,6 +209,30 @@ export default function App() {
       refreshRecordingList();
     } catch (e) {
       setStatus(String(e), "error");
+    }
+  }
+
+  // --- Review / coaching analysis ---
+  async function analyzeRecording() {
+    if (!selectedRecording) {
+      setStatus("No recording selected", "error");
+      return;
+    }
+    setAnalyzing(true);
+    setReport(null);
+    setReviewHistory([]);
+    try {
+      const [r, samples] = await Promise.all([
+        Service.AnalyzeRecording(selectedRecording, 0),
+        Service.ReplayRecording(selectedRecording, 0) as Promise<any[]>,
+      ]);
+      setReport(r);
+      setReviewHistory(buildReviewHistory(samples || []));
+      setStatus(`Analyzed ${selectedRecording} · ${(r as any).events?.length ?? 0} findings`);
+    } catch (e) {
+      setStatus(String(e), "error");
+    } finally {
+      setAnalyzing(false);
     }
   }
 
@@ -425,6 +463,40 @@ export default function App() {
           </section>
         )}
 
+        {activeTab === "review" && (
+          <section className="tabpage active">
+            <div className="panel">
+              <h2>Coaching Analysis</h2>
+              <p className="hint">Pick a recorded session and analyze it for braking, throttle and grip mistakes.</p>
+              <label>Recording
+                <select value={selectedRecording} onChange={(e) => setSelectedRecording(e.target.value)}>
+                  {recordings.map((r) => (
+                    <option key={r.name} value={r.name}>{r.name} ({formatBytes(r.size)})</option>
+                  ))}
+                </select>
+              </label>
+              <div className="rowactions">
+                <button onClick={analyzeRecording} disabled={analyzing}>{analyzing ? "Analyzing…" : "Analyze"}</button>
+              </div>
+              <label>Min issue duration: {(minDurationMs / 1000).toFixed(2)} s
+                <input type="range" min={0} max={1500} step={50} value={minDurationMs}
+                  onChange={(e) => setMinDurationMs(Number(e.target.value))} />
+              </label>
+              {report && hiddenCount > 0 && (
+                <p className="hint">{hiddenCount} brief event{hiddenCount === 1 ? "" : "s"} hidden below {(minDurationMs / 1000).toFixed(2)} s.</p>
+              )}
+              {report?.notes?.length > 0 && report.notes.map((n: string, i: number) => (
+                <p className="hint" key={i}>{n}</p>
+              ))}
+            </div>
+            {report && <Scorecard report={report} />}
+            {report && reviewHistory.length > 0 && (
+              <ReviewCharts history={reviewHistory} events={filteredEvents} />
+            )}
+            {report && <EventList events={filteredEvents} />}
+          </section>
+        )}
+
         {activeTab === "moza" && config && (
           <section className="tabpage active">
             <div className="settings">
@@ -518,6 +590,185 @@ function ChartTab({ group, telemetry, chartIds, history }: { group: string; tele
         ))}
       </div>
     </section>
+  );
+}
+
+const EVENT_LABELS: Record<string, string> = {
+  brake_lockup: "Brake lockup",
+  corner_wheelspin: "Corner wheelspin",
+  under_driving: "Throttle left unused",
+  coasting: "Coasting",
+  pedal_overlap: "Throttle/brake overlap",
+  over_rev: "Bouncing off limiter",
+  short_shift: "Short shift",
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+  major: "#e85d5d",
+  minor: "#e6c84f",
+  info: "#5b9bd5",
+};
+
+function formatDuration(ms: number): string {
+  if (!ms) return "instant";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+function scoreColor(score: number): string {
+  if (score >= 75) return "#42d477";
+  if (score >= 50) return "#e6c84f";
+  return "#e85d5d";
+}
+
+function Scorecard({ report }: { report: any }) {
+  const laps: any[] = report.laps ?? [];
+  const overall = report.overall;
+  const rows = [...laps, overall].filter(Boolean);
+  return (
+    <div className="panel">
+      <h2>Scorecard</h2>
+      <div className="scorecard">
+        <table>
+          <thead>
+            <tr>
+              <th>Lap</th><th>Lap time</th><th>Score</th>
+              <th>Wheelspin</th><th>Lockup</th><th>Coasting</th><th>Throttle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className={r.lap === -1 ? "overall" : ""}>
+                <td>{r.lap === -1 ? "Overall" : r.lap}</td>
+                <td>{r.lap_time > 0 ? `${r.lap_time.toFixed(2)}s` : "—"}</td>
+                <td><strong style={{ color: scoreColor(r.overall_score) }}>{r.overall_score.toFixed(0)}</strong></td>
+                <td>{r.wheelspin_pct.toFixed(0)}%</td>
+                <td>{r.lockup_pct.toFixed(0)}%</td>
+                <td>{r.coasting_pct.toFixed(0)}%</td>
+                <td>{r.throttle_score.toFixed(0)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function EventList({ events }: { events: any[] }) {
+  return (
+    <div className="panel">
+      <h2>Findings ({events.length})</h2>
+      {events.length === 0 && <p className="hint">No issues detected — clean driving.</p>}
+      <div className="findings">
+        {events.map((e, i) => (
+          <div className="finding" key={i} style={{ ["--accent" as any]: SEVERITY_COLORS[e.severity] ?? "#888" }}>
+            <div className="finding-head">
+              <span className="finding-kind">{EVENT_LABELS[e.kind] ?? e.kind}</span>
+              <span className="finding-meta">Lap {e.lap} · {(Number(e.offset_ms) / 1000).toFixed(1)}s · lasted {formatDuration(e.duration_ms)} · {e.speed.toFixed(0)} km/h</span>
+            </div>
+            <div className="finding-msg">{e.message}</div>
+            <div className="finding-tip">{e.suggestion}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Keep the analysis charts responsive on long recordings by downsampling to at
+// most this many points (markArea zones still map by sample index).
+const REVIEW_MAX_POINTS = 4000;
+
+function buildReviewHistory(samples: any[]): HistorySample[] {
+  const n = samples.length;
+  if (n === 0) return [];
+  const step = Math.max(1, Math.ceil(n / REVIEW_MAX_POINTS));
+  const out: HistorySample[] = [];
+  for (let i = 0; i < n; i += step) {
+    out.push({ time: Number(samples[i].offset_ms), telemetry: samples[i].telemetry });
+  }
+  return out;
+}
+
+// timeToIndex finds the first history sample at or after the given offset (ms).
+// history is sorted by time, so a binary search suffices.
+function timeToIndex(history: HistorySample[], ms: number): number {
+  let lo = 0;
+  let hi = history.length - 1;
+  let ans = history.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (history[mid].time >= ms) {
+      ans = mid;
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return ans;
+}
+
+const SEVERITY_AREA: Record<string, string> = {
+  major: "rgba(232,93,93,0.22)",
+  minor: "rgba(230,200,79,0.20)",
+  info: "rgba(91,155,213,0.16)",
+};
+
+// Each review chart shows a slice of the telemetry the detectors rely on, and
+// shades only the event kinds that pertain to it.
+const REVIEW_CHARTS: { id: string; kinds: string[] }[] = [
+  { id: "chartInputsPedals", kinds: ["coasting", "pedal_overlap", "under_driving", "brake_lockup"] },
+  { id: "chartTireSlipRatio", kinds: ["brake_lockup", "corner_wheelspin"] },
+  { id: "chartTireCombinedSlip", kinds: ["under_driving", "corner_wheelspin", "brake_lockup"] },
+  { id: "chartEngineMain", kinds: ["over_rev", "short_shift"] },
+  { id: "chartInputsSteer", kinds: ["corner_wheelspin"] },
+];
+
+function formatClock(ms: number): string {
+  const total = ms / 1000;
+  const m = Math.floor(total / 60);
+  const s = total - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, "0")}`;
+}
+
+function buildHighlights(history: HistorySample[], events: any[], kinds: string[]): Highlight[] {
+  if (history.length === 0) return [];
+  return events
+    .filter((e) => kinds.includes(e.kind))
+    .map((e) => {
+      const start = Number(e.offset_ms);
+      const end = start + Number(e.duration_ms || 0);
+      const from = timeToIndex(history, start);
+      let to = timeToIndex(history, end);
+      if (to <= from) to = Math.min(history.length - 1, from + 1); // keep zero-length events visible
+      return {
+        fromIndex: from,
+        toIndex: to,
+        color: SEVERITY_AREA[e.severity] ?? "rgba(150,150,150,0.16)",
+        name: EVENT_LABELS[e.kind] ?? e.kind,
+      };
+    });
+}
+
+function ReviewCharts({ history, events }: { history: HistorySample[]; events: any[] }) {
+  const labels = useMemo(() => history.map((s) => formatClock(s.time)), [history]);
+  return (
+    <div className="panel">
+      <h2>Telemetry with highlighted issues</h2>
+      <p className="hint">Shaded zones mark where the analysis found something — colour shows severity (red major, yellow minor, blue info).</p>
+      <div className="charts">
+        {REVIEW_CHARTS.map((rc) => (
+          <Chart
+            key={rc.id}
+            definition={chartDefinitions[rc.id]}
+            history={history}
+            xLabels={labels}
+            highlights={buildHighlights(history, events, rc.kinds)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 

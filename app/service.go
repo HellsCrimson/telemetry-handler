@@ -11,6 +11,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"telemetry-handler/analysis"
 	"telemetry-handler/config"
 	"telemetry-handler/forza"
 	"telemetry-handler/output"
@@ -252,6 +253,13 @@ func (s *Service) ListRecordings() ([]recording.Info, error) {
 
 func (s *Service) ReplayRecording(name string, maxSamples int) ([]ReplaySample, error) {
 	return s.runtime.ReplayRecording(name, maxSamples)
+}
+
+// AnalyzeRecording replays a saved recording and returns coaching analysis: a
+// per-lap scorecard plus a list of detected events. Pass maxSamples 0 to analyze
+// the whole recording.
+func (s *Service) AnalyzeRecording(name string, maxSamples int) (analysis.Report, error) {
+	return s.runtime.AnalyzeRecording(name, maxSamples)
 }
 
 // SetOverlayEnabled toggles the user's intent to show the native telemetry

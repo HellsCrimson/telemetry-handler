@@ -443,3 +443,78 @@ input[type="checkbox"] {
     grid-template-columns: repeat(2, minmax(90px, 1fr));
   }
 }
+
+/* Review / coaching analysis tab */
+.scorecard {
+  overflow-x: auto;
+}
+
+.scorecard table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.scorecard th,
+.scorecard td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.scorecard th:first-child,
+.scorecard td:first-child {
+  text-align: left;
+}
+
+.scorecard th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.scorecard tr.overall td {
+  border-top: 2px solid var(--line);
+  font-weight: 600;
+}
+
+.findings {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.finding {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent, var(--line));
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.finding-head {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.finding-kind {
+  color: var(--accent, var(--text));
+  font-weight: 600;
+}
+
+.finding-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.finding-msg {
+  margin-top: 6px;
+}
+
+.finding-tip {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
