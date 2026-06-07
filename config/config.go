@@ -18,7 +18,7 @@ const (
 	defaultOpacity       = 0.85
 	defaultSteeringSize  = 60
 	defaultOverlayWidth  = 320
-	defaultOverlayHeight = 120
+	defaultOverlayHeight = 210
 	defaultOverlayAnchor = "top-left"
 	// defaultGameWindowMatch is matched (case-insensitively, as a substring)
 	// against window class/title when auto-detecting which monitor the game is

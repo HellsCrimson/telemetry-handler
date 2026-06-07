@@ -22,7 +22,7 @@ func TestFormatHUDFormatsTelemetry(t *testing.T) {
 	if !hud.Connected || hud.Stale {
 		t.Fatalf("unexpected connection state: %+v", hud)
 	}
-	if hud.SpeedKPH != "180" || hud.Gear != "4" || hud.RPM != "4200" || hud.MaxRPM != "7000" {
+	if hud.SpeedKPH != "180" || hud.Gear != "G4" || hud.RPM != "4200" || hud.MaxRPM != "7000" {
 		t.Fatalf("unexpected formatted values: %+v", hud)
 	}
 	if hud.RPMRatio != 0.6 {

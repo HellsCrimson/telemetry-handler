@@ -91,9 +91,11 @@ func run(ctx context.Context, ov config.Overlay, source Source) error {
 	// concrete output name is respected as a manual override.
 	ov = resolveOutput(ov)
 
+	history := newHUDHistory(ov.UpdateHz)
+
 	updates := make(chan HUD, 1)
 	telemetry, available, receivedAt := source()
-	updates <- FormatHUD(telemetry, available, receivedAt, time.Now())
+	updates <- history.build(telemetry, available, receivedAt, time.Now())
 
 	errc := make(chan error, 1)
 	go func() {
@@ -111,7 +113,7 @@ func run(ctx context.Context, ov config.Overlay, source Source) error {
 			return err
 		case now := <-ticker.C:
 			telemetry, available, receivedAt := source()
-			hud := FormatHUD(telemetry, available, receivedAt, now)
+			hud := history.build(telemetry, available, receivedAt, now)
 			select {
 			case updates <- hud:
 			default:

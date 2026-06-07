@@ -3,6 +3,7 @@ package overlay
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"strings"
 	"unsafe"
 )
@@ -23,7 +24,7 @@ func drawHUD(pixels []uint32, width, height int, opacity float64, hud HUD) {
 	muted := color.RGBA{R: 146, G: 156, B: 164, A: uint8(opacity * 255)}
 	green := color.RGBA{R: 66, G: 212, B: 119, A: uint8(opacity * 255)}
 	red := color.RGBA{R: 232, G: 93, B: 93, A: uint8(opacity * 255)}
-	blue := color.RGBA{R: 74, G: 163, B: 255, A: uint8(opacity * 255)}
+	amber := color.RGBA{R: 240, G: 180, B: 60, A: uint8(opacity * 255)}
 	yellow := color.RGBA{R: 230, G: 200, B: 79, A: uint8(opacity * 255)}
 
 	fillRect(pixels, width, height, 0, 0, width, height, panel)
@@ -43,23 +44,120 @@ func drawHUD(pixels []uint32, width, height int, opacity float64, hud HUD) {
 	drawText(pixels, width, height, 12, 38, 4, hud.SpeedKPH, text)
 	drawText(pixels, width, height, 14+len(hud.SpeedKPH)*24, 58, 1, "KM/H", muted)
 
-	gear := "G" + hud.Gear
-	drawText(pixels, width, height, width-12-len(gear)*12, 14, 2, gear, text)
+	drawText(pixels, width, height, width-12-len(hud.Gear)*12, 14, 2, hud.Gear, text)
 
 	rpmLine := fmt.Sprintf("%s/%s RPM", hud.RPM, hud.MaxRPM)
 	drawText(pixels, width, height, 12, 92, 1, rpmLine, muted)
 	drawBar(pixels, width, height, 12, 108, width-24, 10, hud.RPMRatio, yellow, stroke)
 
-	barY := 130
-	barW := (width - 40) / 3
-	drawLabeledBar(pixels, width, height, 12, barY, barW, "T", hud.Throttle, green, stroke, muted)
-	drawLabeledBar(pixels, width, height, 20+barW, barY, barW, "B", hud.Brake, red, stroke, muted)
-	drawLabeledBar(pixels, width, height, 28+barW*2, barY, barW, "C", hud.Clutch, blue, stroke, muted)
+	// Throttle/brake history graph on the left, clutch/handbrake tell-tales on
+	// the right (illuminated like dashboard warning lights when engaged).
+	graphTop := 130
+	iconW := 30
+	gx := 12
+	gw := width - 24 - iconW - 8
+	gh := height - graphTop - 10
+	if gh >= 10 && gw >= 16 {
+		drawPedalGraph(pixels, width, height, gx, graphTop, gw, gh, hud, green, red, stroke)
+
+		iconX := gx + gw + 8
+		iconSize := iconW
+		if half := (gh - 6) / 2; half < iconSize {
+			iconSize = half
+		}
+		if iconSize >= 10 {
+			drawTellTale(pixels, width, height, iconX, graphTop, iconSize, "C", hud.Clutch, amber, stroke, muted)
+			drawTellTale(pixels, width, height, iconX, graphTop+iconSize+6, iconSize, "P", hud.HandBrake, red, stroke, muted)
+		}
+	}
 }
 
-func drawLabeledBar(pixels []uint32, width, height, x, y, w int, label string, value float64, fill color.RGBA, bg color.RGBA, text color.RGBA) {
-	drawText(pixels, width, height, x, y, 1, label, text)
-	drawBar(pixels, width, height, x+12, y+1, w-12, 8, value, fill, bg)
+// drawPedalGraph plots throttle (green) and brake (red) over the last few
+// seconds: time runs left (oldest) to right (newest), value bottom (0) to top
+// (full). Newest sample is pinned to the right so the trace scrolls steadily as
+// the buffer fills.
+func drawPedalGraph(pixels []uint32, width, height, x, y, w, h int, hud HUD, throttleColor, brakeColor, border color.RGBA) {
+	fillRect(pixels, width, height, x, y, w, h, color.RGBA{R: 18, G: 22, B: 27, A: border.A})
+	fillRect(pixels, width, height, x, y+h/2, w, 1, color.RGBA{R: border.R, G: border.G, B: border.B, A: border.A / 2})
+	drawRect(pixels, width, height, x, y, w, h, border)
+
+	drawText(pixels, width, height, x+3, y+3, 1, "T", throttleColor)
+	drawText(pixels, width, height, x+3, y+11, 1, "B", brakeColor)
+
+	drawSeries(pixels, width, height, x, y, w, h, hud.BrakeHistory, hud.HistoryCap, brakeColor)
+	drawSeries(pixels, width, height, x, y, w, h, hud.ThrottleHistory, hud.HistoryCap, throttleColor)
+}
+
+func drawSeries(pixels []uint32, width, height, x, y, w, h int, series []float64, capacity int, c color.RGBA) {
+	if len(series) < 2 {
+		return
+	}
+	if capacity < 2 {
+		capacity = len(series)
+	}
+	step := float64(w-1) / float64(capacity-1)
+	point := func(i int) (int, int) {
+		// Pin the newest sample (last index) to the right edge.
+		px := x + (w - 1) - int(float64(len(series)-1-i)*step)
+		v := series[i]
+		if v < 0 {
+			v = 0
+		} else if v > 1 {
+			v = 1
+		}
+		py := y + int(float64(h-1)*(1-v))
+		return px, py
+	}
+	prevX, prevY := point(0)
+	for i := 1; i < len(series); i++ {
+		cx, cy := point(i)
+		drawLine(pixels, width, height, prevX, prevY, cx, cy, 2, c)
+		prevX, prevY = cx, cy
+	}
+}
+
+// drawTellTale draws a round dashboard indicator whose face fades from dim
+// (level 0, control released) to onColor (level 1, fully applied), like a
+// warning light glowing in proportion to how hard the pedal/lever is pressed.
+func drawTellTale(pixels []uint32, width, height, x, y, size int, label string, level float64, onColor, border, muted color.RGBA) {
+	if level < 0 {
+		level = 0
+	} else if level > 1 {
+		level = 1
+	}
+	cx := x + size/2
+	cy := y + size/2
+	r := size / 2
+
+	scale := 2
+	if size >= 26 {
+		scale = 3
+	}
+	glyphW := 5 * scale
+	glyphH := 7 * scale
+	tx := cx - glyphW/2
+	ty := cy - glyphH/2
+
+	dim := color.RGBA{R: 22, G: 26, B: 31, A: onColor.A}
+	dark := color.RGBA{R: 12, G: 16, B: 20, A: onColor.A}
+
+	fillCircle(pixels, width, height, cx, cy, r, border)
+	fillCircle(pixels, width, height, cx, cy, r-2, lerpRGBA(dim, onColor, level))
+	// Letter shifts from muted (dim) to dark (lit) so it stays legible against
+	// the brightening face.
+	drawText(pixels, width, height, tx, ty, scale, label, lerpRGBA(muted, dark, level))
+}
+
+func lerpRGBA(a, b color.RGBA, t float64) color.RGBA {
+	if t < 0 {
+		t = 0
+	} else if t > 1 {
+		t = 1
+	}
+	lerp := func(from, to uint8) uint8 {
+		return uint8(float64(from) + (float64(to)-float64(from))*t)
+	}
+	return color.RGBA{R: lerp(a.R, b.R), G: lerp(a.G, b.G), B: lerp(a.B, b.B), A: b.A}
 }
 
 func drawBar(pixels []uint32, width, height, x, y, w, h int, value float64, fill color.RGBA, bg color.RGBA) {
@@ -72,6 +170,74 @@ func drawBar(pixels []uint32, width, height, x, y, w, h int, value float64, fill
 	fillRect(pixels, width, height, x, y, w, h, color.RGBA{R: 28, G: 34, B: 39, A: bg.A})
 	fillRect(pixels, width, height, x, y, int(float64(w)*value), h, fill)
 	drawRect(pixels, width, height, x, y, w, h, bg)
+}
+
+// drawLine plots a thickness×thickness pen along a Bresenham line between two
+// points, clipped to the surface by fillRect.
+func drawLine(pixels []uint32, width, height, x0, y0, x1, y1, thickness int, c color.RGBA) {
+	if thickness < 1 {
+		thickness = 1
+	}
+	dx := abs(x1 - x0)
+	dy := -abs(y1 - y0)
+	sx := 1
+	if x0 > x1 {
+		sx = -1
+	}
+	sy := 1
+	if y0 > y1 {
+		sy = -1
+	}
+	err := dx + dy
+	off := thickness / 2
+	for {
+		fillRect(pixels, width, height, x0-off, y0-off, thickness, thickness, c)
+		if x0 == x1 && y0 == y1 {
+			return
+		}
+		e2 := 2 * err
+		if e2 >= dy {
+			err += dy
+			x0 += sx
+		}
+		if e2 <= dx {
+			err += dx
+			y0 += sy
+		}
+	}
+}
+
+func fillCircle(pixels []uint32, width, height, cx, cy, r int, c color.RGBA) {
+	if r <= 0 {
+		return
+	}
+	packed := packPremul(c)
+	for dy := -r; dy <= r; dy++ {
+		yy := cy + dy
+		if yy < 0 || yy >= height {
+			continue
+		}
+		span := int(math.Sqrt(float64(r*r - dy*dy)))
+		x0 := cx - span
+		x1 := cx + span
+		if x0 < 0 {
+			x0 = 0
+		}
+		if x1 >= width {
+			x1 = width - 1
+		}
+		row := yy * width
+		for xx := x0; xx <= x1; xx++ {
+			pixels[row+xx] = packed
+		}
+	}
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func clear(pixels []uint32) {
@@ -181,49 +347,49 @@ var font = map[rune][7]byte{
 }
 
 func drawSteering(pixels []uint32, width, height int, x, y, steeringSize int, opacity float64, steeringPixels []uint32) {
-for sy := 0; sy < steeringSize; sy++ {
-for sx := 0; sx < steeringSize; sx++ {
-dx := x + sx
-dy := y + sy
-if dx < 0 || dx >= width || dy < 0 || dy >= height {
-continue
-}
+	for sy := 0; sy < steeringSize; sy++ {
+		for sx := 0; sx < steeringSize; sx++ {
+			dx := x + sx
+			dy := y + sy
+			if dx < 0 || dx >= width || dy < 0 || dy >= height {
+				continue
+			}
 
-srcPx := steeringPixels[sy*steeringSize+sx]
-if srcPx == 0 {
-continue
-}
+			srcPx := steeringPixels[sy*steeringSize+sx]
+			if srcPx == 0 {
+				continue
+			}
 
-a := (srcPx >> 24) & 0xff
-if a == 0 {
-continue
-}
+			a := (srcPx >> 24) & 0xff
+			if a == 0 {
+				continue
+			}
 
-blend := blendAlpha(pixels[dy*width+dx], srcPx, uint8(float64(a)*opacity))
-pixels[dy*width+dx] = blend
-}
-}
+			blend := blendAlpha(pixels[dy*width+dx], srcPx, uint8(float64(a)*opacity))
+			pixels[dy*width+dx] = blend
+		}
+	}
 }
 
 func blendAlpha(dst, src uint32, opacity uint8) uint32 {
-dstA := (dst >> 24) & 0xff
-dstR := (dst >> 16) & 0xff
-dstG := (dst >> 8) & 0xff
-dstB := dst & 0xff
+	dstA := (dst >> 24) & 0xff
+	dstR := (dst >> 16) & 0xff
+	dstG := (dst >> 8) & 0xff
+	dstB := dst & 0xff
 
-srcA := ((src >> 24) & 0xff) * uint32(opacity) / 255
-srcR := ((src >> 16) & 0xff)
-srcG := ((src >> 8) & 0xff)
-srcB := (src & 0xff)
+	srcA := ((src >> 24) & 0xff) * uint32(opacity) / 255
+	srcR := ((src >> 16) & 0xff)
+	srcG := ((src >> 8) & 0xff)
+	srcB := (src & 0xff)
 
-outA := dstA + srcA - dstA*srcA/255
-if outA == 0 {
-return 0
-}
+	outA := dstA + srcA - dstA*srcA/255
+	if outA == 0 {
+		return 0
+	}
 
-outR := (dstR*dstA + srcR*srcA) / outA
-outG := (dstG*dstA + srcG*srcA) / outA
-outB := (dstB*dstA + srcB*srcA) / outA
+	outR := (dstR*dstA + srcR*srcA) / outA
+	outG := (dstG*dstA + srcG*srcA) / outA
+	outB := (dstB*dstA + srcB*srcA) / outA
 
-return (outA << 24) | (outR << 16) | (outG << 8) | outB
+	return (outA << 24) | (outR << 16) | (outG << 8) | outB
 }
