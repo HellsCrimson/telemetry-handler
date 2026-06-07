@@ -86,6 +86,11 @@ func (m *Manager) Stop() {
 }
 
 func run(ctx context.Context, ov config.Overlay, source Source) error {
+	// Resolve which monitor to display on. When the configured output is empty
+	// or "auto" this auto-detects the game window's monitor (Hyprland); a
+	// concrete output name is respected as a manual override.
+	ov = resolveOutput(ov)
+
 	updates := make(chan HUD, 1)
 	telemetry, available, receivedAt := source()
 	updates <- FormatHUD(telemetry, available, receivedAt, time.Now())

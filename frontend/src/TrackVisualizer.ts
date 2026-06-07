@@ -10,6 +10,10 @@ interface PositionPoint {
   pitch: number;
   roll: number;
   speed: number;
+  // false for the (0,0,0) position Forza reports while in menus; such points
+  // are treated as gaps so they don't anchor the map to the origin or draw a
+  // path segment back to it.
+  valid: boolean;
 }
 
 export class TrackVisualizer {
@@ -102,14 +106,20 @@ export class TrackVisualizer {
   }
 
   updateData(history: HistorySample[]) {
-    this.positionData = history.map((sample) => ({
-      x: Number(sample.telemetry.PositionX),
-      z: Number(sample.telemetry.PositionZ),
-      yaw: Number(sample.telemetry.Yaw),
-      pitch: Number(sample.telemetry.Pitch),
-      roll: Number(sample.telemetry.Roll),
-      speed: Number(sample.telemetry.Speed),
-    }));
+    this.positionData = history.map((sample) => {
+      const x = Number(sample.telemetry.PositionX);
+      const y = Number(sample.telemetry.PositionY);
+      const z = Number(sample.telemetry.PositionZ);
+      return {
+        x,
+        z,
+        yaw: Number(sample.telemetry.Yaw),
+        pitch: Number(sample.telemetry.Pitch),
+        roll: Number(sample.telemetry.Roll),
+        speed: Number(sample.telemetry.Speed),
+        valid: !(x === 0 && y === 0 && z === 0),
+      };
+    });
     if (this.positionData.length > 0) {
       this.computeBounds();
     }
@@ -123,12 +133,16 @@ export class TrackVisualizer {
   private computeBounds() {
     let minX = Infinity, maxX = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
+    let any = false;
     this.positionData.forEach((pos) => {
+      if (!pos.valid) return;
+      any = true;
       minX = Math.min(minX, pos.x);
       maxX = Math.max(maxX, pos.x);
       minZ = Math.min(minZ, pos.z);
       maxZ = Math.max(maxZ, pos.z);
     });
+    if (!any) return;
     this.trackMinX = minX;
     this.trackMaxX = maxX;
     this.trackMinZ = minZ;
@@ -152,9 +166,12 @@ export class TrackVisualizer {
     const centerY = this.canvas.height / this.dpiScale / 2;
     const trackCenterX = (this.trackMinX + this.trackMaxX) / 2;
     const trackCenterZ = (this.trackMinZ + this.trackMaxZ) / 2;
+    // Forza's world axes run opposite to canvas screen space on both the X
+    // (left/right) and Z (forward/back maps to up/down) axes, so negate both to
+    // match the real map orientation instead of a 180°-rotated/mirrored view.
     return {
       canvasX: centerX + (x - trackCenterX) * scale + this.panX,
-      canvasY: centerY + (z - trackCenterZ) * scale + this.panY,
+      canvasY: centerY - (z - trackCenterZ) * scale + this.panY,
     };
   }
 
@@ -165,11 +182,19 @@ export class TrackVisualizer {
     this.ctx.lineCap = "round";
     this.ctx.lineJoin = "round";
     this.ctx.beginPath();
-    const start = this.worldToCanvas(this.positionData[0].x, this.positionData[0].z);
-    this.ctx.moveTo(start.canvasX, start.canvasY);
-    for (let i = 1; i < this.positionData.length; i++) {
-      const pos = this.worldToCanvas(this.positionData[i].x, this.positionData[i].z);
-      this.ctx.lineTo(pos.canvasX, pos.canvasY);
+    let penDown = false;
+    for (const point of this.positionData) {
+      if (!point.valid) {
+        penDown = false; // lift the pen across menu gaps
+        continue;
+      }
+      const pos = this.worldToCanvas(point.x, point.z);
+      if (penDown) {
+        this.ctx.lineTo(pos.canvasX, pos.canvasY);
+      } else {
+        this.ctx.moveTo(pos.canvasX, pos.canvasY);
+        penDown = true;
+      }
     }
     this.ctx.stroke();
   }
@@ -177,10 +202,13 @@ export class TrackVisualizer {
   private drawCar(index: number) {
     if (index < 0 || index >= this.positionData.length) return;
     const data = this.positionData[index];
+    if (!data.valid) return; // in the menu — nothing to place on the track
     const pos = this.worldToCanvas(data.x, data.z);
     this.ctx.save();
     this.ctx.translate(pos.canvasX, pos.canvasY);
-    this.ctx.rotate((data.yaw * Math.PI) / 180);
+    // Match the 180°-flipped world-to-canvas mapping so the marker points along
+    // travel rather than against it.
+    this.ctx.rotate((data.yaw * Math.PI) / 180 + Math.PI);
     const width = this.carSize * 0.8;
     const height = this.carSize;
     const rollInfluence = Math.max(-1, Math.min(1, data.roll / 45));
@@ -254,6 +282,7 @@ export class TrackVisualizer {
     }
     this.ctx.restore();
     const zoomText = `${(this.zoom * 100).toFixed(0)}%`;
-    this.onInfo(`Samples: ${this.positionData.length} | Zoom: ${zoomText}`);
+    const sampleCount = this.positionData.reduce((n, p) => (p.valid ? n + 1 : n), 0);
+    this.onInfo(`Samples: ${sampleCount} | Zoom: ${zoomText}`);
   }
 }

@@ -75,7 +75,9 @@ export function SaveConfig(cfg: config$0.Config): $CancellablePromise<void> {
 }
 
 /**
- * SetOverlayEnabled toggles the native telemetry overlay on or off at runtime.
+ * SetOverlayEnabled toggles the user's intent to show the native telemetry
+ * overlay. The window itself only appears while the game is sending telemetry;
+ * enabling it before the game starts simply arms it to show automatically.
  */
 export function SetOverlayEnabled(enabled: boolean): $CancellablePromise<void> {
     return $Call.ByID(1172459, enabled);

@@ -42,6 +42,7 @@ export default function App() {
   const [recordings, setRecordings] = useState<any[]>([]);
   const [selectedRecording, setSelectedRecording] = useState("");
   const [replayMax, setReplayMax] = useState(5000);
+  const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [overlayRunning, setOverlayRunning] = useState(false);
 
   // Replay loop state kept in a ref to avoid stale closures in the setTimeout
@@ -84,7 +85,12 @@ export default function App() {
   }
 
   function refreshOverlay() {
-    Service.GetOverlayStatus().then((s: any) => setOverlayRunning(!!s.running)).catch(() => {});
+    Service.GetOverlayStatus()
+      .then((s: any) => {
+        setOverlayEnabled(!!s.enabled);
+        setOverlayRunning(!!s.running);
+      })
+      .catch(() => {});
   }
 
   const refreshRecordingList = useCallback(() => {
@@ -160,9 +166,10 @@ export default function App() {
   }
 
   async function toggleOverlay(enabled: boolean) {
+    setOverlayEnabled(enabled);
     try {
       await Service.SetOverlayEnabled(enabled);
-      setStatus(enabled ? "Overlay enabled" : "Overlay disabled");
+      setStatus(enabled ? "Overlay enabled — shows when the game is running" : "Overlay disabled");
       refreshOverlay();
     } catch (e) {
       setStatus(String(e), "error");
@@ -363,7 +370,7 @@ export default function App() {
         {activeTab === "position" && (
           <section className="tabpage active">
             <ReadoutGroup group="positionReadouts" telemetry={t} />
-            <TrackPanel history={trackHistory} currentIndex={trackIndex} />
+            <TrackPanel history={trackHistory} currentIndex={trackIndex} onClear={() => setHistory([])} />
             <div className="charts">
               <Chart definition={chartDefinitions.chartLapTiming} history={history} />
             </div>
@@ -465,10 +472,10 @@ export default function App() {
               </div>
               <div className="panel">
                 <h2>Overlay</h2>
-                <label className="check"><input type="checkbox" checked={overlayRunning} onChange={(e) => toggleOverlay(e.target.checked)} /> Show native overlay</label>
+                <label className="check"><input type="checkbox" checked={overlayEnabled} onChange={(e) => toggleOverlay(e.target.checked)} /> Show native overlay</label>
                 <dl className="kv">
-                  <div><dt>Status</dt><dd>{overlayRunning ? "Running" : "Stopped"}</dd></div>
-                  <div><dt>Note</dt><dd>Transparent always-on-top HUD with speed, gear, RPM, pedals and steering</dd></div>
+                  <div><dt>Status</dt><dd>{!overlayEnabled ? "Disabled" : overlayRunning ? "Running" : "Waiting for game…"}</dd></div>
+                  <div><dt>Note</dt><dd>Appears automatically while the game is sending telemetry, on the monitor the game is on (Hyprland). Set overlay.output to force a monitor.</dd></div>
                 </dl>
               </div>
             </div>
@@ -527,7 +534,7 @@ function ColorSwatches({ colors, onChange }: { colors: number[][]; onChange: (in
   );
 }
 
-function TrackPanel({ history, currentIndex }: { history: HistorySample[]; currentIndex: number }) {
+function TrackPanel({ history, currentIndex, onClear }: { history: HistorySample[]; currentIndex: number; onClear: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const vizRef = useRef<TrackVisualizer | null>(null);
   const [info, setInfo] = useState("Zoom: scroll | Pan: drag");
@@ -553,6 +560,7 @@ function TrackPanel({ history, currentIndex }: { history: HistorySample[]; curre
     <div className="track-container">
       <div className="track-controls">
         <button onClick={() => vizRef.current?.resetView()}>Reset View</button>
+        <button onClick={onClear}>Clear</button>
         <span>{info}</span>
       </div>
       <canvas ref={canvasRef} id="trackCanvas" />

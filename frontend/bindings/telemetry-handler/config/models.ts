@@ -125,6 +125,7 @@ export class Overlay {
     "enabled": boolean;
     "source_url"?: string;
     "output"?: string;
+    "game_window_match"?: string;
     "width"?: number | null;
     "height"?: number | null;
     "anchor": string;

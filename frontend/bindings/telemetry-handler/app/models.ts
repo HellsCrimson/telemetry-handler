@@ -13,13 +13,19 @@ import * as forza$0 from "../forza/models.js";
 import * as time$0 from "../../time/models.js";
 
 /**
- * OverlayStatus reports whether the native overlay is currently running.
+ * OverlayStatus reports the overlay's desired (user toggle) and actual
+ * (native window) state. Enabled without Running means the overlay is on but
+ * waiting for the game to start sending telemetry.
  */
 export class OverlayStatus {
+    "enabled": boolean;
     "running": boolean;
 
     /** Creates a new OverlayStatus instance. */
     constructor($$source: Partial<OverlayStatus> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
         if (!("running" in $$source)) {
             this["running"] = false;
         }

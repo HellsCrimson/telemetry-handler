@@ -20,6 +20,11 @@ const (
 	defaultOverlayWidth  = 320
 	defaultOverlayHeight = 120
 	defaultOverlayAnchor = "top-left"
+	// defaultGameWindowMatch is matched (case-insensitively, as a substring)
+	// against window class/title when auto-detecting which monitor the game is
+	// on. The Proton/Wine window class for Forza is not guaranteed, so this is
+	// configurable via overlay.game_window_match.
+	defaultGameWindowMatch = "forza"
 )
 
 type Color [3]uint8
@@ -62,6 +67,7 @@ type Overlay struct {
 	Enabled           bool    `json:"enabled"`
 	SourceURL         string  `json:"source_url,omitempty"`
 	Output            string  `json:"output,omitempty"`
+	GameWindowMatch   string  `json:"game_window_match,omitempty"`
 	Width             *int    `json:"width,omitempty"`
 	Height            *int    `json:"height,omitempty"`
 	Anchor            string  `json:"anchor"`
@@ -123,18 +129,19 @@ func Default() Config {
 			Enabled: false,
 		},
 		Overlay: Overlay{
-			Enabled:      false,
-			Width:        intPtr(defaultOverlayWidth),
-			Height:       intPtr(defaultOverlayHeight),
-			Anchor:       defaultOverlayAnchor,
-			MarginTop:    intPtr(0),
-			MarginRight:  intPtr(0),
-			MarginBottom: intPtr(0),
-			MarginLeft:   intPtr(0),
-			UpdateHz:     defaultOverlayHz,
-			Opacity:      defaultOpacity,
-			ShowSteering: true,
-			SteeringSize: intPtr(defaultSteeringSize),
+			Enabled:         false,
+			GameWindowMatch: defaultGameWindowMatch,
+			Width:           intPtr(defaultOverlayWidth),
+			Height:          intPtr(defaultOverlayHeight),
+			Anchor:          defaultOverlayAnchor,
+			MarginTop:       intPtr(0),
+			MarginRight:     intPtr(0),
+			MarginBottom:    intPtr(0),
+			MarginLeft:      intPtr(0),
+			UpdateHz:        defaultOverlayHz,
+			Opacity:         defaultOpacity,
+			ShowSteering:    true,
+			SteeringSize:    intPtr(defaultSteeringSize),
 		},
 	}
 }
@@ -265,6 +272,9 @@ func (o Overlay) WithDefaults() Overlay {
 	}
 	if o.SteeringSize == nil {
 		o.SteeringSize = intPtr(defaultSteeringSize)
+	}
+	if o.GameWindowMatch == "" {
+		o.GameWindowMatch = defaultGameWindowMatch
 	}
 	return o
 }
