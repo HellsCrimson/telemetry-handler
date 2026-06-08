@@ -338,6 +338,105 @@ input[type="checkbox"] {
 
 .hint {
   margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.banner {
+  position: relative;
+  margin: 0 16px 12px;
+  padding: 12px 40px 12px 14px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.banner code {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.banner-error {
+  background: rgba(232, 93, 93, 0.14);
+  border: 1px solid var(--red);
+  color: var(--text);
+}
+
+.banner-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  min-height: auto;
+  width: auto;
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.subhead {
+  margin: 18px 0 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.grid2 {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+}
+
+.grid2 label {
+  margin-top: 10px;
+}
+
+.overlay-sim {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 12px;
+  background:
+    repeating-linear-gradient(45deg, #0c0f12 0 12px, #0e1216 12px 24px);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.overlay-sim-box {
+  position: absolute;
+  box-sizing: border-box;
+  background: rgba(74, 163, 255, 0.18);
+  border: 1px solid var(--blue);
+  border-radius: 3px;
+  cursor: move;
+  touch-action: none;
+}
+
+.overlay-sim-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--blue);
+  pointer-events: none;
+}
+
+.overlay-sim-steering {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--green);
+  border-radius: 50%;
+  background: rgba(66, 212, 119, 0.2);
+  cursor: move;
+  touch-action: none;
 }
 
 .recordings {

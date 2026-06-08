@@ -41,10 +41,32 @@ type Runtime struct {
 	seenAt    time.Time
 	moza      *moza.Driver
 	recorder  *recording.Manager
+
+	// loadErrPath/loadErr record a config-file load failure so the dashboard can
+	// surface that the app fell back to default settings.
+	loadErrPath string
+	loadErr     string
 }
 
 func NewRuntime(cfg config.Config, cfgPath string, recorder *recording.Manager) *Runtime {
 	return &Runtime{cfg: cfg, cfgPath: cfgPath, recorder: recorder}
+}
+
+// SetLoadError records that the config file at path failed to load (msg is the
+// error), so the runtime started with defaults. Surfaced via Service.GetConfigStatus.
+func (r *Runtime) SetLoadError(path, msg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.loadErrPath = path
+	r.loadErr = msg
+}
+
+// LoadError returns the recorded config-load failure path and message (both
+// empty when the config loaded cleanly or defaults were used with no file).
+func (r *Runtime) LoadError() (path, msg string) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.loadErrPath, r.loadErr
 }
 
 func (r *Runtime) Config() config.Config {

@@ -12,7 +12,6 @@ export class Config {
     "listen_port": number;
     "print_hz": number;
     "moza": Moza;
-    "web": Web;
     "recording": Recording;
     "terminal_print": Terminal;
     "overlay": Overlay;
@@ -30,9 +29,6 @@ export class Config {
         }
         if (!("moza" in $$source)) {
             this["moza"] = (new Moza());
-        }
-        if (!("web" in $$source)) {
-            this["web"] = (new Web());
         }
         if (!("recording" in $$source)) {
             this["recording"] = (new Recording());
@@ -55,22 +51,18 @@ export class Config {
         const $$createField4_0 = $$createType1;
         const $$createField5_0 = $$createType2;
         const $$createField6_0 = $$createType3;
-        const $$createField7_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("moza" in $$parsedSource) {
             $$parsedSource["moza"] = $$createField3_0($$parsedSource["moza"]);
         }
-        if ("web" in $$parsedSource) {
-            $$parsedSource["web"] = $$createField4_0($$parsedSource["web"]);
-        }
         if ("recording" in $$parsedSource) {
-            $$parsedSource["recording"] = $$createField5_0($$parsedSource["recording"]);
+            $$parsedSource["recording"] = $$createField4_0($$parsedSource["recording"]);
         }
         if ("terminal_print" in $$parsedSource) {
-            $$parsedSource["terminal_print"] = $$createField6_0($$parsedSource["terminal_print"]);
+            $$parsedSource["terminal_print"] = $$createField5_0($$parsedSource["terminal_print"]);
         }
         if ("overlay" in $$parsedSource) {
-            $$parsedSource["overlay"] = $$createField7_0($$parsedSource["overlay"]);
+            $$parsedSource["overlay"] = $$createField6_0($$parsedSource["overlay"]);
         }
         return new Config($$parsedSource as Partial<Config>);
     }
@@ -123,7 +115,6 @@ export class Moza {
 
 export class Overlay {
     "enabled": boolean;
-    "source_url"?: string;
     "output"?: string;
     "game_window_match"?: string;
     "width"?: number | null;
@@ -138,6 +129,14 @@ export class Overlay {
     "show_steering": boolean;
     "steering_image_path"?: string;
     "steering_size"?: number | null;
+
+    /**
+     * SteeringX/SteeringY position the steering wheel within the overlay box
+     * (top-left origin, logical pixels). When nil they fall back to the legacy
+     * auto-placement (top-right corner) — see SteeringXValue/SteeringYValue.
+     */
+    "steering_x"?: number | null;
+    "steering_y"?: number | null;
 
     /** Creates a new Overlay instance. */
     constructor($$source: Partial<Overlay> = {}) {
@@ -211,34 +210,8 @@ export class Terminal {
     }
 }
 
-export class Web {
-    "enabled": boolean;
-    "addr": string;
-
-    /** Creates a new Web instance. */
-    constructor($$source: Partial<Web> = {}) {
-        if (!("enabled" in $$source)) {
-            this["enabled"] = false;
-        }
-        if (!("addr" in $$source)) {
-            this["addr"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Web instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Web {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new Web($$parsedSource as Partial<Web>);
-    }
-}
-
 // Private type creation functions
 const $$createType0 = Moza.createFrom;
-const $$createType1 = Web.createFrom;
-const $$createType2 = Recording.createFrom;
-const $$createType3 = Terminal.createFrom;
-const $$createType4 = Overlay.createFrom;
+const $$createType1 = Recording.createFrom;
+const $$createType2 = Terminal.createFrom;
+const $$createType3 = Overlay.createFrom;

@@ -61,8 +61,8 @@ func (waylandBackend) Run(ctx context.Context, cfg config.Overlay, updates <-cha
 	width := cfg.WidthValue()
 	height := cfg.HeightValue()
 	steeringSize := cfg.SteeringSizeValue()
-	steeringX := width - steeringSize - 64
-	steeringY := 8
+	steeringX := cfg.SteeringXValue()
+	steeringY := cfg.SteeringYValue()
 
 	for {
 		select {

@@ -7,6 +7,8 @@ export {
 };
 
 export {
+    ConfigStatus,
+    MonitorInfo,
     OverlayStatus,
     ReplaySample,
     TelemetrySnapshot

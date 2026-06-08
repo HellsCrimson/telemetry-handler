@@ -12,7 +12,6 @@ const (
 	defaultListenAddr    = "0.0.0.0"
 	defaultListenPort    = 20440
 	defaultPrintHz       = 5
-	defaultWebAddr       = "127.0.0.1:8080"
 	defaultRecordDir     = "recordings"
 	defaultOverlayHz     = 10
 	defaultOpacity       = 0.85
@@ -34,7 +33,6 @@ type Config struct {
 	ListenPort int       `json:"listen_port"`
 	PrintHz    float64   `json:"print_hz"`
 	Moza       Moza      `json:"moza"`
-	Web        Web       `json:"web"`
 	Recording  Recording `json:"recording"`
 	Terminal   Terminal  `json:"terminal_print"`
 	Overlay    Overlay   `json:"overlay"`
@@ -50,11 +48,6 @@ type Moza struct {
 	ButtonMask    uint16    `json:"button_mask"`
 }
 
-type Web struct {
-	Enabled bool   `json:"enabled"`
-	Addr    string `json:"addr"`
-}
-
 type Recording struct {
 	Dir string `json:"dir"`
 }
@@ -65,7 +58,6 @@ type Terminal struct {
 
 type Overlay struct {
 	Enabled           bool    `json:"enabled"`
-	SourceURL         string  `json:"source_url,omitempty"`
 	Output            string  `json:"output,omitempty"`
 	GameWindowMatch   string  `json:"game_window_match,omitempty"`
 	Width             *int    `json:"width,omitempty"`
@@ -80,6 +72,11 @@ type Overlay struct {
 	ShowSteering      bool    `json:"show_steering"`
 	SteeringImagePath string  `json:"steering_image_path,omitempty"`
 	SteeringSize      *int    `json:"steering_size,omitempty"`
+	// SteeringX/SteeringY position the steering wheel within the overlay box
+	// (top-left origin, logical pixels). When nil they fall back to the legacy
+	// auto-placement (top-right corner) — see SteeringXValue/SteeringYValue.
+	SteeringX *int `json:"steering_x,omitempty"`
+	SteeringY *int `json:"steering_y,omitempty"`
 }
 
 func Default() Config {
@@ -117,10 +114,6 @@ func Default() Config {
 				{255, 255, 255},
 			},
 			ButtonMask: 0x03ff,
-		},
-		Web: Web{
-			Enabled: true,
-			Addr:    defaultWebAddr,
 		},
 		Recording: Recording{
 			Dir: defaultRecordDir,
@@ -223,9 +216,6 @@ func (c Config) Validate() error {
 			return fmt.Errorf("moza.button_mask must fit the 10 button telemetry bits")
 		}
 	}
-	if c.Web.Enabled && c.Web.Addr == "" {
-		return fmt.Errorf("web.addr must not be empty when web.enabled is true")
-	}
 	if c.Recording.Dir == "" {
 		return fmt.Errorf("recording.dir must not be empty")
 	}
@@ -269,6 +259,9 @@ func (o Overlay) WithDefaults() Overlay {
 	}
 	if o.UpdateHz <= 0 {
 		o.UpdateHz = defaultOverlayHz
+	}
+	if o.Opacity <= 0 {
+		o.Opacity = defaultOpacity
 	}
 	if o.SteeringSize == nil {
 		o.SteeringSize = intPtr(defaultSteeringSize)
@@ -369,6 +362,28 @@ func (o Overlay) SteeringSizeValue() int {
 		return defaultSteeringSize
 	}
 	return *o.SteeringSize
+}
+
+// steeringGap is the legacy right-edge gap used when the steering wheel position
+// is not explicitly configured (kept so existing configs render unchanged).
+const steeringGap = 64
+
+// SteeringXValue returns the steering wheel's x offset within the overlay box.
+// When unset it reproduces the legacy auto-placement near the top-right corner.
+func (o Overlay) SteeringXValue() int {
+	if o.SteeringX == nil {
+		return o.WidthValue() - o.SteeringSizeValue() - steeringGap
+	}
+	return *o.SteeringX
+}
+
+// SteeringYValue returns the steering wheel's y offset within the overlay box.
+// When unset it reproduces the legacy top margin.
+func (o Overlay) SteeringYValue() int {
+	if o.SteeringY == nil {
+		return 8
+	}
+	return *o.SteeringY
 }
 
 func intPtr(v int) *int {

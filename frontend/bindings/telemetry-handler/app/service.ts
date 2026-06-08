@@ -50,27 +50,53 @@ export function GetConfig(): $CancellablePromise<config$0.Config> {
     });
 }
 
+export function GetConfigStatus(): $CancellablePromise<$models.ConfigStatus> {
+    return $Call.ByID(4163477518).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+/**
+ * GetMonitorInfo reports the logical resolution of the monitor the overlay will
+ * appear on, used by the dashboard placement preview.
+ */
+export function GetMonitorInfo(): $CancellablePromise<$models.MonitorInfo> {
+    return $Call.ByID(239629648).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
 export function GetOverlayStatus(): $CancellablePromise<$models.OverlayStatus> {
     return $Call.ByID(2207766068).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
     });
 }
 
 export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(3118608443).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
 export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
     return $Call.ByID(3996014961).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType6($result);
+    });
+}
+
+/**
+ * ListMonitors returns the names of all connected monitors for the overlay
+ * output dropdown (empty when enumeration is unavailable, e.g. non-Hyprland).
+ */
+export function ListMonitors(): $CancellablePromise<string[]> {
+    return $Call.ByID(4014067021).then(($result: any) => {
+        return $$createType7($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType9($result);
     });
 }
 
@@ -80,7 +106,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType11($result);
     });
 }
 
@@ -99,23 +125,26 @@ export function SetOverlayEnabled(enabled: boolean): $CancellablePromise<void> {
 
 export function StartRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(982748349).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
 export function StopRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(1374983877).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = analysis$0.Report.createFrom;
 const $$createType1 = config$0.Config.createFrom;
-const $$createType2 = $models.OverlayStatus.createFrom;
-const $$createType3 = recording$0.Status.createFrom;
-const $$createType4 = $models.TelemetrySnapshot.createFrom;
-const $$createType5 = recording$0.Info.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $models.ReplaySample.createFrom;
-const $$createType8 = $Create.Array($$createType7);
+const $$createType2 = $models.ConfigStatus.createFrom;
+const $$createType3 = $models.MonitorInfo.createFrom;
+const $$createType4 = $models.OverlayStatus.createFrom;
+const $$createType5 = recording$0.Status.createFrom;
+const $$createType6 = $models.TelemetrySnapshot.createFrom;
+const $$createType7 = $Create.Array($Create.Any);
+const $$createType8 = recording$0.Info.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = $models.ReplaySample.createFrom;
+const $$createType11 = $Create.Array($$createType10);

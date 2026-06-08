@@ -6,8 +6,7 @@ export {
     Moza,
     Overlay,
     Recording,
-    Terminal,
-    Web
+    Terminal
 } from "./models.js";
 
 export type {

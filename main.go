@@ -3,10 +3,12 @@ package main
 import (
 	"embed"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"telemetry-handler/app"
 	"telemetry-handler/config"
@@ -34,9 +36,20 @@ func main() {
 		return
 	}
 
-	cfg, loadedPath, err := config.LoadOptional(*configPath)
-	if err != nil {
-		log.Fatalf("load config: %v", err)
+	// A malformed/invalid config used to abort startup. Instead, fall back to
+	// defaults and surface the error (native dialog + in-app banner) so the app
+	// always starts and the user can see what went wrong.
+	cfg, loadedPath, loadErr := config.LoadOptional(*configPath)
+	var loadErrMsg, loadErrPath string
+	if loadErr != nil {
+		loadErrPath = *configPath
+		if loadErrPath == "" {
+			loadErrPath = "config.json"
+		}
+		loadErrMsg = loadErr.Error()
+		log.Printf("config error (starting with defaults): %v", loadErr)
+		cfg = config.Default()
+		loadedPath = ""
 	}
 	if loadedPath == "" {
 		log.Printf("using defaults: listen=%s:%d print_hz=%.2f", cfg.ListenAddr, cfg.ListenPort, cfg.PrintHz)
@@ -50,6 +63,9 @@ func main() {
 	}
 
 	runtime := app.NewRuntime(cfg, loadedPath, recorder)
+	if loadErrMsg != "" {
+		runtime.SetLoadError(loadErrPath, loadErrMsg)
+	}
 	service := app.NewService(runtime)
 
 	wailsApp := application.New(application.Options{
@@ -73,6 +89,19 @@ func main() {
 		BackgroundColour: application.NewRGB(10, 13, 16),
 		URL:              "/",
 	})
+
+	// If the config failed to load, pop a native error dialog once the app is up
+	// (the window/event loop must be running before a dialog can be shown). Run
+	// it on a goroutine so the synchronous Show() doesn't block the main thread.
+	if loadErrMsg != "" {
+		message := fmt.Sprintf(
+			"Could not load %s:\n\n%s\n\nThe app started with default settings. Fix the file and restart, or adjust settings in the app and Save to overwrite it.",
+			loadErrPath, loadErrMsg,
+		)
+		wailsApp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+			go wailsApp.Dialog.Error().SetTitle("Configuration error").SetMessage(message).Show()
+		})
+	}
 
 	if err := wailsApp.Run(); err != nil {
 		log.Fatal(err)

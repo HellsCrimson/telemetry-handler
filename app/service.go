@@ -58,6 +58,17 @@ type OverlayStatus struct {
 	Running bool `json:"running"`
 }
 
+// MonitorInfo reports the logical resolution of the monitor the overlay will
+// appear on, so the dashboard can render an accurate placement preview. When
+// Detected is false the resolution was not auto-detectable (e.g. not running
+// under Hyprland) and the UI should let the user pick a resolution manually.
+type MonitorInfo struct {
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Name     string `json:"name"`
+	Detected bool   `json:"detected"`
+}
+
 func NewService(runtime *Runtime) *Service {
 	return &Service{
 		runtime: runtime,
@@ -216,6 +227,19 @@ func (s *Service) GetConfig() config.Config {
 	return s.runtime.Config()
 }
 
+// ConfigStatus reports whether the config file failed to load at startup. When
+// Error is non-empty the app is running on default settings and the dashboard
+// shows a warning banner.
+type ConfigStatus struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
+}
+
+func (s *Service) GetConfigStatus() ConfigStatus {
+	path, msg := s.runtime.LoadError()
+	return ConfigStatus{Path: path, Error: msg}
+}
+
 func (s *Service) GetTelemetry() TelemetrySnapshot {
 	return s.runtime.LatestTelemetry()
 }
@@ -223,6 +247,12 @@ func (s *Service) GetTelemetry() TelemetrySnapshot {
 func (s *Service) ApplyConfig(cfg config.Config) (config.Config, error) {
 	if err := s.runtime.ApplyConfig(cfg); err != nil {
 		return config.Config{}, err
+	}
+	// The overlay reads its geometry/appearance config only when started, so a
+	// running overlay must be restarted to pick up placement/size/opacity edits.
+	if s.ctx != nil && s.overlay.Running() {
+		s.overlay.Stop()
+		s.reconcileOverlay(s.ctx)
 	}
 	return s.runtime.Config(), nil
 }
@@ -279,4 +309,17 @@ func (s *Service) SetOverlayEnabled(enabled bool) error {
 
 func (s *Service) GetOverlayStatus() OverlayStatus {
 	return OverlayStatus{Enabled: s.overlayDesired.Load(), Running: s.overlay.Running()}
+}
+
+// GetMonitorInfo reports the logical resolution of the monitor the overlay will
+// appear on, used by the dashboard placement preview.
+func (s *Service) GetMonitorInfo() MonitorInfo {
+	w, h, name, ok := overlay.Monitor(s.runtime.Config().Overlay)
+	return MonitorInfo{Width: w, Height: h, Name: name, Detected: ok}
+}
+
+// ListMonitors returns the names of all connected monitors for the overlay
+// output dropdown (empty when enumeration is unavailable, e.g. non-Hyprland).
+func (s *Service) ListMonitors() []string {
+	return overlay.Monitors()
 }

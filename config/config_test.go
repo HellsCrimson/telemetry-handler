@@ -22,9 +22,6 @@ func TestLoadOptionalUsesDefaultsWhenDefaultFileMissing(t *testing.T) {
 	if cfg.Moza.Enabled || cfg.Moza.UpdateHz != 20 || cfg.Moza.RPMBrightness != 15 || cfg.Moza.ButtonMask != 0x03ff {
 		t.Fatalf("unexpected moza defaults: %+v", cfg.Moza)
 	}
-	if !cfg.Web.Enabled || cfg.Web.Addr != "127.0.0.1:8080" {
-		t.Fatalf("unexpected web defaults: %+v", cfg.Web)
-	}
 	if cfg.Recording.Dir != "recordings" {
 		t.Fatalf("unexpected recording defaults: %+v", cfg.Recording)
 	}
@@ -42,12 +39,10 @@ func TestLoadOverridesDefaults(t *testing.T) {
 		"listen_addr":"127.0.0.1",
 		"listen_port":20441,
 		"print_hz":10,
-		"web":{"enabled":true,"addr":"127.0.0.1:9090"},
 		"recording":{"dir":"captures"},
 		"terminal_print":{"enabled":true},
 		"overlay":{
 			"enabled":true,
-			"source_url":"http://127.0.0.1:9090/api/telemetry",
 			"output":"DP-1",
 			"width":360,
 			"height":160,
@@ -86,8 +81,8 @@ func TestLoadOverridesDefaults(t *testing.T) {
 	if cfg.Moza.RPMColors[0] != (Color{1, 2, 3}) || cfg.Moza.ButtonColors[0] != (Color{4, 5, 6}) || cfg.Moza.ButtonMask != 7 {
 		t.Fatalf("unexpected moza color config: %+v", cfg.Moza)
 	}
-	if cfg.Web.Addr != "127.0.0.1:9090" {
-		t.Fatalf("unexpected web config: %+v", cfg.Web)
+	if cfg.Overlay.Output != "DP-1" {
+		t.Fatalf("unexpected overlay output: %+v", cfg.Overlay)
 	}
 	if cfg.Recording.Dir != "captures" {
 		t.Fatalf("unexpected recording config: %+v", cfg.Recording)
@@ -185,7 +180,7 @@ func TestValidateOverlayModeRejectsInvalidOpacity(t *testing.T) {
 func TestSaveWritesIndentedJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	cfg := Default()
-	cfg.Web.Addr = "127.0.0.1:9090"
+	cfg.Recording.Dir = "captures"
 
 	if err := Save(path, cfg); err != nil {
 		t.Fatalf("Save returned error: %v", err)
@@ -195,7 +190,36 @@ func TestSaveWritesIndentedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if loaded.Web.Addr != "127.0.0.1:9090" {
-		t.Fatalf("loaded web addr = %q", loaded.Web.Addr)
+	if loaded.Recording.Dir != "captures" {
+		t.Fatalf("loaded recording dir = %q", loaded.Recording.Dir)
+	}
+}
+
+func TestSteeringPositionDefaultsToLegacyPlacement(t *testing.T) {
+	// With SteeringX/Y unset, the helpers must reproduce the legacy hardcoded
+	// top-right placement so existing configs render unchanged.
+	o := Overlay{Width: intPtr(320), SteeringSize: intPtr(60)}
+	if got, want := o.SteeringXValue(), 320-60-steeringGap; got != want {
+		t.Fatalf("SteeringXValue() = %d, want %d", got, want)
+	}
+	if got := o.SteeringYValue(); got != 8 {
+		t.Fatalf("SteeringYValue() = %d, want 8", got)
+	}
+}
+
+func TestSteeringPositionHonorsExplicitValues(t *testing.T) {
+	o := Overlay{Width: intPtr(320), SteeringSize: intPtr(60), SteeringX: intPtr(10), SteeringY: intPtr(20)}
+	if got := o.SteeringXValue(); got != 10 {
+		t.Fatalf("SteeringXValue() = %d, want 10", got)
+	}
+	if got := o.SteeringYValue(); got != 20 {
+		t.Fatalf("SteeringYValue() = %d, want 20", got)
+	}
+}
+
+func TestWithDefaultsFillsOpacity(t *testing.T) {
+	o := Overlay{}.WithDefaults()
+	if o.Opacity != defaultOpacity {
+		t.Fatalf("WithDefaults() opacity = %v, want %v", o.Opacity, defaultOpacity)
 	}
 }

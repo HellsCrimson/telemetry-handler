@@ -12,6 +12,7 @@ import {
 } from "./telemetry";
 import Chart, { type Highlight } from "./Chart";
 import { TrackVisualizer } from "./TrackVisualizer";
+import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
 
 const HISTORY_MS = 120000;
 
@@ -45,6 +46,14 @@ export default function App() {
   const [replayMax, setReplayMax] = useState(5000);
   const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [overlayRunning, setOverlayRunning] = useState(false);
+  const [monitor, setMonitor] = useState<{ width: number; height: number; name: string; detected: boolean }>({
+    width: 1920,
+    height: 1080,
+    name: "",
+    detected: false,
+  });
+  const [monitorList, setMonitorList] = useState<string[]>([]);
+  const [configError, setConfigError] = useState<{ path: string; error: string } | null>(null);
 
   const [report, setReport] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -107,6 +116,21 @@ export default function App() {
       .catch(() => {});
   }
 
+  function refreshMonitor() {
+    Service.GetMonitorInfo()
+      .then((m: any) => {
+        if (m?.detected && m.width > 0 && m.height > 0) {
+          setMonitor({ width: m.width, height: m.height, name: m.name ?? "", detected: true });
+        } else {
+          setMonitor((prev) => ({ ...prev, detected: false }));
+        }
+      })
+      .catch(() => setMonitor((prev) => ({ ...prev, detected: false })));
+    Service.ListMonitors()
+      .then((names: any) => setMonitorList(Array.isArray(names) ? names : []))
+      .catch(() => setMonitorList([]));
+  }
+
   const refreshRecordingList = useCallback(() => {
     Service.ListRecordings()
       .then((list: any) => {
@@ -121,6 +145,9 @@ export default function App() {
   useEffect(() => {
     let mounted = true;
     Service.GetConfig().then((c) => mounted && setConfig(c)).catch((e) => setStatus(String(e), "error"));
+    Service.GetConfigStatus()
+      .then((s: any) => mounted && setConfigError(s?.error ? { path: s.path, error: s.error } : null))
+      .catch(() => {});
     refreshRecordingStatus();
     refreshRecordingList();
     refreshOverlay();
@@ -143,6 +170,12 @@ export default function App() {
     };
   }, [ingest, refreshRecordingList, setStatus]);
 
+  // Re-detect the target monitor whenever the Settings tab is opened, so the
+  // placement preview reflects the current monitor layout.
+  useEffect(() => {
+    if (activeTab === "settings") refreshMonitor();
+  }, [activeTab]);
+
   // --- Config form ---
   const patch = (mutator: (c: any) => void) =>
     setConfig((c: any) => {
@@ -150,6 +183,25 @@ export default function App() {
       mutator(next);
       return next;
     });
+
+  // patchPlacement maps the visual placement editor's values back onto the
+  // overlay config. Free x,y placement is expressed as a top-left anchor plus
+  // left/top margins (what the Wayland layer-shell uses for absolute position).
+  function patchPlacement(p: Partial<PlacementValue>) {
+    patch((c) => {
+      const o = c.overlay;
+      if (p.x !== undefined) {
+        o.anchor = "top-left";
+        o.margin_left = p.x;
+      }
+      if (p.y !== undefined) {
+        o.anchor = "top-left";
+        o.margin_top = p.y;
+      }
+      if (p.steeringX !== undefined) o.steering_x = p.steeringX;
+      if (p.steeringY !== undefined) o.steering_y = p.steeringY;
+    });
+  }
 
   async function applyConfig() {
     try {
@@ -340,6 +392,13 @@ export default function App() {
           <button onClick={saveConfig}>Save</button>
         </div>
       </header>
+
+      {configError && (
+        <div className="banner banner-error" role="alert">
+          <strong>Configuration error.</strong> Could not load <code>{configError.path}</code>: {configError.error}. Running with default settings — fix the file and restart, or adjust settings below and Save to overwrite it.
+          <button className="banner-dismiss" onClick={() => setConfigError(null)} aria-label="Dismiss">×</button>
+        </div>
+      )}
 
       <nav className="tabs" aria-label="Dashboard sections">
         {TABS.map(([id, label]) => (
@@ -542,14 +601,82 @@ export default function App() {
                 <label className="check"><input type="checkbox" checked={config.terminal_print.enabled} onChange={(e) => patch((c) => (c.terminal_print.enabled = e.target.checked))} /> Terminal telemetry output</label>
                 <label>Recording directory <input autoComplete="off" value={config.recording.dir} onChange={(e) => patch((c) => (c.recording.dir = e.target.value))} /></label>
               </div>
-              <div className="panel">
-                <h2>Overlay</h2>
-                <label className="check"><input type="checkbox" checked={overlayEnabled} onChange={(e) => toggleOverlay(e.target.checked)} /> Show native overlay</label>
-                <dl className="kv">
-                  <div><dt>Status</dt><dd>{!overlayEnabled ? "Disabled" : overlayRunning ? "Running" : "Waiting for game…"}</dd></div>
-                  <div><dt>Note</dt><dd>Appears automatically while the game is sending telemetry, on the monitor the game is on (Hyprland). Set overlay.output to force a monitor.</dd></div>
-                </dl>
-              </div>
+              {(() => {
+                const o = config.overlay;
+                const num = (v: any, d: number) => (typeof v === "number" ? v : d);
+                const width = num(o.width, 320);
+                const height = num(o.height, 210);
+                const steeringSize = num(o.steering_size, 60);
+                const placement: PlacementValue = {
+                  x: num(o.margin_left, 0),
+                  y: num(o.margin_top, 0),
+                  width,
+                  height,
+                  opacity: num(o.opacity, 0.85),
+                  showSteering: !!o.show_steering,
+                  steeringSize,
+                  steeringX: num(o.steering_x, width - steeringSize - 64),
+                  steeringY: num(o.steering_y, 8),
+                };
+                return (
+                  <div className="panel" style={{ gridColumn: "1 / -1" }}>
+                    <h2>Overlay</h2>
+                    <label className="check"><input type="checkbox" checked={overlayEnabled} onChange={(e) => toggleOverlay(e.target.checked)} /> Show native overlay</label>
+                    <dl className="kv">
+                      <div><dt>Status</dt><dd>{!overlayEnabled ? "Disabled" : overlayRunning ? "Running" : "Waiting for game…"}</dd></div>
+                      <div><dt>Monitor</dt><dd>{monitor.detected ? `${monitor.name ?? ""} ${monitor.width}×${monitor.height}`.trim() : `${monitor.width}×${monitor.height} (not auto-detected — set manually below)`}</dd></div>
+                    </dl>
+
+                    <h3 className="subhead">Placement</h3>
+                    <p className="hint">Drag the box to position the overlay; drag the wheel marker to move the steering display. Saved as an x,y pixel position.</p>
+                    <OverlayPlacement monitorWidth={monitor.width} monitorHeight={monitor.height} value={placement} onChange={patchPlacement} />
+                    <div className="grid2">
+                      <label>X (px) <input type="number" min={0} value={placement.x} onChange={(e) => patchPlacement({ x: Number(e.target.value) })} /></label>
+                      <label>Y (px) <input type="number" min={0} value={placement.y} onChange={(e) => patchPlacement({ y: Number(e.target.value) })} /></label>
+                    </div>
+                    {!monitor.detected && (
+                      <div className="grid2">
+                        <label>Screen width <input type="number" min={1} value={monitor.width} onChange={(e) => setMonitor((m) => ({ ...m, width: Number(e.target.value) }))} /></label>
+                        <label>Screen height <input type="number" min={1} value={monitor.height} onChange={(e) => setMonitor((m) => ({ ...m, height: Number(e.target.value) }))} /></label>
+                      </div>
+                    )}
+
+                    <h3 className="subhead">Monitor & detection</h3>
+                    {(() => {
+                      const current = o.output && o.output !== "auto" ? o.output : "";
+                      const opts = current && !monitorList.includes(current) ? [...monitorList, current] : monitorList;
+                      return (
+                        <label>Monitor
+                          <select value={current} onChange={(e) => patch((c) => (c.overlay.output = e.target.value))}>
+                            <option value="">Auto (follow the game's monitor)</option>
+                            {opts.map((name) => (<option key={name} value={name}>{name}</option>))}
+                          </select>
+                        </label>
+                      );
+                    })()}
+                    <label>Game window match <input autoComplete="off" placeholder="forza" value={o.game_window_match ?? ""} onChange={(e) => patch((c) => (c.overlay.game_window_match = e.target.value))} /></label>
+                    <p className="hint">Auto-detection (Hyprland) finds the monitor whose window class/title contains this text. Pick a monitor above to force one.</p>
+
+                    <h3 className="subhead">Dimensions & appearance</h3>
+                    <div className="grid2">
+                      <label>Width <input type="number" min={1} value={width} onChange={(e) => patch((c) => (c.overlay.width = Number(e.target.value)))} /></label>
+                      <label>Height <input type="number" min={1} value={height} onChange={(e) => patch((c) => (c.overlay.height = Number(e.target.value)))} /></label>
+                    </div>
+                    <label>Opacity ({placement.opacity.toFixed(2)}) <input type="range" min={0.1} max={1} step={0.05} value={placement.opacity} onChange={(e) => patch((c) => (c.overlay.opacity = Number(e.target.value)))} /></label>
+                    <label>Update Hz <input type="number" min={1} max={60} step={1} value={num(o.update_hz, 10)} onChange={(e) => patch((c) => (c.overlay.update_hz = Number(e.target.value)))} /></label>
+
+                    <h3 className="subhead">Steering wheel</h3>
+                    <label className="check"><input type="checkbox" checked={!!o.show_steering} onChange={(e) => patch((c) => (c.overlay.show_steering = e.target.checked))} /> Show steering wheel</label>
+                    <div className="grid2">
+                      <label>Size <input type="number" min={16} max={256} value={steeringSize} onChange={(e) => patch((c) => (c.overlay.steering_size = Number(e.target.value)))} /></label>
+                      <label>Wheel X (px) <input type="number" min={0} value={placement.steeringX} onChange={(e) => patchPlacement({ steeringX: Number(e.target.value) })} /></label>
+                      <label>Wheel Y (px) <input type="number" min={0} value={placement.steeringY} onChange={(e) => patchPlacement({ steeringY: Number(e.target.value) })} /></label>
+                    </div>
+                    <label>Custom wheel image <input autoComplete="off" placeholder="/path/to/wheel.png (optional, square PNG)" value={o.steering_image_path ?? ""} onChange={(e) => patch((c) => (c.overlay.steering_image_path = e.target.value))} /></label>
+                    <p className="hint">Apply restarts a running overlay so changes take effect immediately. Save to persist to config.json.</p>
+                  </div>
+                );
+              })()}
             </div>
           </section>
         )}

@@ -62,8 +62,73 @@ type hyprClient struct {
 }
 
 type hyprMonitor struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID     int     `json:"id"`
+	Name   string  `json:"name"`
+	Width  int     `json:"width"`
+	Height int     `json:"height"`
+	Scale  float64 `json:"scale"`
+}
+
+// Monitor reports the logical resolution of the target overlay monitor (the one
+// the game window is on, or the configured override), so the UI can render an
+// accurate placement preview. ok is false when detection is unavailable (e.g.
+// not running under Hyprland), in which case the caller should fall back to a
+// manual resolution.
+func Monitor(ov config.Overlay) (width, height int, name string, ok bool) {
+	resolved := resolveOutput(ov)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var monitors []hyprMonitor
+	if err := hyprctlJSON(ctx, &monitors, "monitors"); err != nil {
+		return 0, 0, "", false
+	}
+	if len(monitors) == 0 {
+		return 0, 0, "", false
+	}
+
+	target := strings.TrimSpace(resolved.Output)
+	for _, m := range monitors {
+		if target == "" || strings.EqualFold(m.Name, target) {
+			w, h := logicalSize(m)
+			return w, h, m.Name, true
+		}
+	}
+	// Configured output not found among monitors; fall back to the first.
+	w, h := logicalSize(monitors[0])
+	return w, h, monitors[0].Name, true
+}
+
+// Monitors lists the Wayland output names of all connected monitors, for the
+// dashboard's overlay-output dropdown. Returns nil when unavailable (e.g. not
+// running under Hyprland).
+func Monitors() []string {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var monitors []hyprMonitor
+	if err := hyprctlJSON(ctx, &monitors, "monitors"); err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(monitors))
+	for _, m := range monitors {
+		if m.Name != "" {
+			names = append(names, m.Name)
+		}
+	}
+	return names
+}
+
+// logicalSize converts a monitor's physical pixel resolution to logical pixels
+// (dividing by the fractional scale), matching the coordinate space used by the
+// Wayland layer-shell margins.
+func logicalSize(m hyprMonitor) (int, int) {
+	scale := m.Scale
+	if scale <= 0 {
+		scale = 1
+	}
+	return int(float64(m.Width)/scale + 0.5), int(float64(m.Height)/scale + 0.5)
 }
 
 // detectHyprlandOutput returns the Wayland output name of the monitor the game

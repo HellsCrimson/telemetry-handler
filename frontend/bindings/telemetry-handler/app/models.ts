@@ -13,6 +13,75 @@ import * as forza$0 from "../forza/models.js";
 import * as time$0 from "../../time/models.js";
 
 /**
+ * ConfigStatus reports whether the config file failed to load at startup. When
+ * Error is non-empty the app is running on default settings and the dashboard
+ * shows a warning banner.
+ */
+export class ConfigStatus {
+    "path": string;
+    "error": string;
+
+    /** Creates a new ConfigStatus instance. */
+    constructor($$source: Partial<ConfigStatus> = {}) {
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ConfigStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ConfigStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ConfigStatus($$parsedSource as Partial<ConfigStatus>);
+    }
+}
+
+/**
+ * MonitorInfo reports the logical resolution of the monitor the overlay will
+ * appear on, so the dashboard can render an accurate placement preview. When
+ * Detected is false the resolution was not auto-detectable (e.g. not running
+ * under Hyprland) and the UI should let the user pick a resolution manually.
+ */
+export class MonitorInfo {
+    "width": number;
+    "height": number;
+    "name": string;
+    "detected": boolean;
+
+    /** Creates a new MonitorInfo instance. */
+    constructor($$source: Partial<MonitorInfo> = {}) {
+        if (!("width" in $$source)) {
+            this["width"] = 0;
+        }
+        if (!("height" in $$source)) {
+            this["height"] = 0;
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("detected" in $$source)) {
+            this["detected"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MonitorInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MonitorInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MonitorInfo($$parsedSource as Partial<MonitorInfo>);
+    }
+}
+
+/**
  * OverlayStatus reports the overlay's desired (user toggle) and actual
  * (native window) state. Enabled without Running means the overlay is on but
  * waiting for the game to start sending telemetry.
