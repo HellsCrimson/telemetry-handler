@@ -57,17 +57,19 @@ const (
 // Offsets within a rF2VehicleTelemetry, relative to the vehicle's start
 // (packed layout, verified against a live buffer hex dump).
 const (
-	vElapsedTime = 12  // double  (mID@0, mDeltaTime@4, mElapsedTime@12)
-	vLapNumber   = 20  // long
-	vVehicleName = 32  // char[64] (mLapStartET@24)
-	vTrackName   = 96  // char[64]
-	vLocalVel    = 184 // rF2Vec3, m/s local (mPos@160, mLocalVel@184)
-	vGear        = 352 // long (-1=reverse, 0=neutral, 1+=forward)
-	vEngineRPM   = 356 // double
-	vThrottle    = 388 // double mUnfilteredThrottle 0..1 (water@364, oil@372, clutchRPM@380)
-	vBrake       = 396 // double mUnfilteredBrake 0..1
-	vSteering    = 404 // double mUnfilteredSteering -1..1
-	vClutch      = 412 // double mUnfilteredClutch 0..1
+	vElapsedTime  = 12  // double  (mID@0, mDeltaTime@4, mElapsedTime@12)
+	vLapNumber    = 20  // long
+	vVehicleName  = 32  // char[64] (mLapStartET@24)
+	vTrackName    = 96  // char[64]
+	vLocalVel     = 184 // rF2Vec3, m/s local (mPos@160, mLocalVel@184)
+	vGear         = 352 // long (-1=reverse, 0=neutral, 1+=forward)
+	vEngineRPM    = 356 // double
+	vThrottle     = 388 // double mUnfilteredThrottle 0..1 (water@364, oil@372, clutchRPM@380)
+	vBrake        = 396 // double mUnfilteredBrake 0..1
+	vSteering     = 404 // double mUnfilteredSteering -1..1
+	vClutch       = 412 // double mUnfilteredClutch 0..1
+	vFuel         = 524 // double mFuel, liters (filtered inputs 420..451, misc/aero 452..523)
+	vEngineMaxRPM = 532 // double mEngineMaxRPM, rev limit
 )
 
 // packet is our own UDP wire format — deliberately not the Forza FH6 layout.
@@ -75,21 +77,23 @@ const (
 // in the main app) and easy to evolve; swap to a binary encoding later if the
 // rate ever justifies it.
 type packet struct {
-	Source      string  `json:"source"` // always "lmu"
-	Seq         uint64  `json:"seq"`
-	Version     uint32  `json:"version"` // SMMP update counter (sanity/debug)
-	NumVehicles int32   `json:"num_vehicles"`
-	VehicleName string  `json:"vehicle_name"`
-	TrackName   string  `json:"track_name"`
-	ElapsedTime float64 `json:"elapsed_time"`
-	LapNumber   int32   `json:"lap_number"`
-	Gear        int32   `json:"gear"`
-	EngineRPM   float64 `json:"engine_rpm"`
-	SpeedMS     float64 `json:"speed_ms"` // magnitude of local velocity
-	Throttle    float64 `json:"throttle"`
-	Brake       float64 `json:"brake"`
-	Steering    float64 `json:"steering"`
-	Clutch      float64 `json:"clutch"`
+	Source       string  `json:"source"` // always "lmu"
+	Seq          uint64  `json:"seq"`
+	Version      uint32  `json:"version"` // SMMP update counter (sanity/debug)
+	NumVehicles  int32   `json:"num_vehicles"`
+	VehicleName  string  `json:"vehicle_name"`
+	TrackName    string  `json:"track_name"`
+	ElapsedTime  float64 `json:"elapsed_time"`
+	LapNumber    int32   `json:"lap_number"`
+	Gear         int32   `json:"gear"` // -1=reverse, 0=neutral, 1+=forward
+	EngineRPM    float64 `json:"engine_rpm"`
+	EngineMaxRPM float64 `json:"engine_max_rpm"` // rev limit
+	SpeedMS      float64 `json:"speed_ms"`       // magnitude of local velocity
+	Throttle     float64 `json:"throttle"`
+	Brake        float64 `json:"brake"`
+	Steering     float64 `json:"steering"`
+	Clutch       float64 `json:"clutch"`
+	Fuel         float64 `json:"fuel"` // liters
 }
 
 func u32(b []byte, off int) uint32 { return binary.LittleEndian.Uint32(b[off:]) }
@@ -191,21 +195,23 @@ func main() {
 		vx, vy, vz := f64(buf, base+vLocalVel), f64(buf, base+vLocalVel+8), f64(buf, base+vLocalVel+16)
 
 		pkt := packet{
-			Source:      "lmu",
-			Seq:         seq,
-			Version:     u32(buf, offVersionBegin),
-			NumVehicles: i32(buf, offNumVehicles),
-			VehicleName: cstr(buf, base+vVehicleName, 64),
-			TrackName:   cstr(buf, base+vTrackName, 64),
-			ElapsedTime: f64(buf, base+vElapsedTime),
-			LapNumber:   i32(buf, base+vLapNumber),
-			Gear:        i32(buf, base+vGear),
-			EngineRPM:   f64(buf, base+vEngineRPM),
-			SpeedMS:     math.Sqrt(vx*vx + vy*vy + vz*vz),
-			Throttle:    f64(buf, base+vThrottle),
-			Brake:       f64(buf, base+vBrake),
-			Steering:    f64(buf, base+vSteering),
-			Clutch:      f64(buf, base+vClutch),
+			Source:       "lmu",
+			Seq:          seq,
+			Version:      u32(buf, offVersionBegin),
+			NumVehicles:  i32(buf, offNumVehicles),
+			VehicleName:  cstr(buf, base+vVehicleName, 64),
+			TrackName:    cstr(buf, base+vTrackName, 64),
+			ElapsedTime:  f64(buf, base+vElapsedTime),
+			LapNumber:    i32(buf, base+vLapNumber),
+			Gear:         i32(buf, base+vGear),
+			EngineRPM:    f64(buf, base+vEngineRPM),
+			EngineMaxRPM: f64(buf, base+vEngineMaxRPM),
+			SpeedMS:      math.Sqrt(vx*vx + vy*vy + vz*vz),
+			Throttle:     f64(buf, base+vThrottle),
+			Brake:        f64(buf, base+vBrake),
+			Steering:     f64(buf, base+vSteering),
+			Clutch:       f64(buf, base+vClutch),
+			Fuel:         f64(buf, base+vFuel),
 		}
 		seq++
 

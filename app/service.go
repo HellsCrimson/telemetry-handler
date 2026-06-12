@@ -14,6 +14,7 @@ import (
 	"telemetry-handler/analysis"
 	"telemetry-handler/config"
 	"telemetry-handler/forza"
+	"telemetry-handler/lmu"
 	"telemetry-handler/output"
 	"telemetry-handler/overlay"
 	"telemetry-handler/receiver"
@@ -179,8 +180,42 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 	var lastPrint time.Time
 	var badSizes uint64
 
+	// apply pushes one telemetry frame to every consumer: the shared snapshot
+	// (overlay + dashboard), MOZA RPM lighting, and optional terminal output.
+	apply := func(t forza.Telemetry) error {
+		s.runtime.SetTelemetry(t)
+		if s.runtime.MozaEnabled() {
+			currentRPM := t.CurrentEngineRpm
+			if t.IsRaceOn == 0 {
+				currentRPM = 0
+			}
+			if err := s.runtime.UpdateMozaRPM(currentRPM, t.EngineMaxRpm); err != nil {
+				return err
+			}
+		}
+		if s.runtime.TerminalPrintEnabled() {
+			now := time.Now()
+			if lastPrint.IsZero() || now.Sub(lastPrint) >= s.runtime.PrintEvery() {
+				lastPrint = now
+				fmt.Println(formatter.Format(t))
+			}
+		}
+		return nil
+	}
+
 	log.Printf("listening for telemetry on %s", addr)
 	err := receiver.Listen(ctx, addr, func(_ context.Context, packet []byte) error {
+		// One UDP port carries both Forza's fixed-size binary packets and the
+		// lmu-bridge sidecar's JSON; demultiplex by content (JSON starts '{').
+		if lmu.LooksLikePacket(packet) {
+			p, err := lmu.Parse(packet)
+			if err != nil {
+				log.Printf("ignored malformed lmu packet: %v", err)
+				return nil
+			}
+			return apply(lmuToTelemetry(p))
+		}
+
 		telemetry, err := forza.ParseFH6Packet(packet)
 		if err != nil {
 			var sizeErr *forza.PacketSizeError
@@ -192,29 +227,12 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 			return err
 		}
 
+		// Only Forza's raw packets are recorded for now — recordings replay
+		// through the FH6 parser, so LMU needs its own format (future work).
 		if err := s.runtime.RecordPacket(packet, time.Now()); err != nil {
 			return err
 		}
-
-		s.runtime.SetTelemetry(telemetry)
-		if s.runtime.MozaEnabled() {
-			currentRPM := telemetry.CurrentEngineRpm
-			if telemetry.IsRaceOn == 0 {
-				currentRPM = 0
-			}
-			if err := s.runtime.UpdateMozaRPM(currentRPM, telemetry.EngineMaxRpm); err != nil {
-				return err
-			}
-		}
-
-		if s.runtime.TerminalPrintEnabled() {
-			now := time.Now()
-			if lastPrint.IsZero() || now.Sub(lastPrint) >= s.runtime.PrintEvery() {
-				lastPrint = now
-				fmt.Println(formatter.Format(telemetry))
-			}
-		}
-		return nil
+		return apply(telemetry)
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("receiver: %v", err)
