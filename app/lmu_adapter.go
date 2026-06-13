@@ -15,6 +15,26 @@ import (
 // don't pass through neutral on every shift.
 const lmuNeutralGear = 15
 
+// decodePacket converts a raw telemetry packet — as received over UDP or read
+// back from a recording — into the canonical forza.Telemetry model plus its
+// source ("forza"/"lmu") and descriptive meta. It demultiplexes Forza's binary
+// packets from the lmu-bridge's JSON by content, so the live receiver and
+// recording replay decode both games identically.
+func decodePacket(packet []byte) (forza.Telemetry, string, TelemetryMeta, error) {
+	if lmu.LooksLikePacket(packet) {
+		p, err := lmu.Parse(packet)
+		if err != nil {
+			return forza.Telemetry{}, "lmu", TelemetryMeta{}, err
+		}
+		return lmuToTelemetry(p), "lmu", lmuToMeta(p), nil
+	}
+	t, err := forza.ParseFH6Packet(packet)
+	if err != nil {
+		return forza.Telemetry{}, "forza", TelemetryMeta{}, err
+	}
+	return t, "forza", TelemetryMeta{}, nil
+}
+
 // lmuToTelemetry maps an lmu-bridge packet into the app's forza.Telemetry model
 // so the overlay, MOZA lighting, dashboard and terminal output consume LMU
 // exactly like Forza, with no downstream changes. It is stateless.

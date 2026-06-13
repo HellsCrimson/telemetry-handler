@@ -113,11 +113,14 @@ export class OverlayStatus {
 
 /**
  * ReplaySample is a single telemetry frame from a recording, offset from the
- * start of the recording in milliseconds.
+ * start of the recording in milliseconds. Source/Meta mirror the live
+ * TelemetrySnapshot so the dashboard can tailor a replay/review per game.
  */
 export class ReplaySample {
     "offset_ms": number;
     "telemetry": forza$0.Telemetry;
+    "source": string;
+    "meta": TelemetryMeta;
 
     /** Creates a new ReplaySample instance. */
     constructor($$source: Partial<ReplaySample> = {}) {
@@ -126,6 +129,12 @@ export class ReplaySample {
         }
         if (!("telemetry" in $$source)) {
             this["telemetry"] = (new forza$0.Telemetry());
+        }
+        if (!("source" in $$source)) {
+            this["source"] = "";
+        }
+        if (!("meta" in $$source)) {
+            this["meta"] = (new TelemetryMeta());
         }
 
         Object.assign(this, $$source);
@@ -136,9 +145,13 @@ export class ReplaySample {
      */
     static createFrom($$source: any = {}): ReplaySample {
         const $$createField1_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("telemetry" in $$parsedSource) {
             $$parsedSource["telemetry"] = $$createField1_0($$parsedSource["telemetry"]);
+        }
+        if ("meta" in $$parsedSource) {
+            $$parsedSource["meta"] = $$createField3_0($$parsedSource["meta"]);
         }
         return new ReplaySample($$parsedSource as Partial<ReplaySample>);
     }

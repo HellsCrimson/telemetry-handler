@@ -67,7 +67,11 @@ func NewManager(dir string) (*Manager, error) {
 	return &Manager{dir: dir}, nil
 }
 
-func (m *Manager) Start() (Status, error) {
+// Start begins a new recording. label is a short, filename-safe prefix
+// identifying the telemetry source (e.g. "forza"/"lmu"); it is sanitized and
+// defaults to "session" when empty. Recordings are source-agnostic byte streams
+// regardless of label, so a recording of either game replays the same way.
+func (m *Manager) Start(label string) (Status, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -76,7 +80,7 @@ func (m *Manager) Start() (Status, error) {
 	}
 
 	now := time.Now()
-	name := fmt.Sprintf("fh6-%s%s", now.Format("20060102-150405.000000000"), FileExt)
+	name := fmt.Sprintf("%s-%s%s", sanitizeLabel(label), now.Format("20060102-150405.000000000"), FileExt)
 	path := filepath.Join(m.dir, name)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -212,6 +216,21 @@ func (m *Manager) statusLocked() Status {
 		StartedAt: m.active.started,
 		Records:   m.active.records,
 	}
+}
+
+// sanitizeLabel reduces a source label to a safe filename prefix: lowercase
+// alphanumerics only, falling back to "session" when nothing usable remains.
+func sanitizeLabel(label string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(label) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() == 0 {
+		return "session"
+	}
+	return b.String()
 }
 
 func (r *Recorder) close() error {

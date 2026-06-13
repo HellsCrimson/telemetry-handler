@@ -44,10 +44,13 @@ type TelemetrySnapshot struct {
 }
 
 // ReplaySample is a single telemetry frame from a recording, offset from the
-// start of the recording in milliseconds.
+// start of the recording in milliseconds. Source/Meta mirror the live
+// TelemetrySnapshot so the dashboard can tailor a replay/review per game.
 type ReplaySample struct {
 	OffsetMS  uint64          `json:"offset_ms"`
 	Telemetry forza.Telemetry `json:"telemetry"`
+	Source    string          `json:"source"`
+	Meta      TelemetryMeta   `json:"meta"`
 }
 
 // Runtime holds the shared, mutex-protected application state: the latest
@@ -207,7 +210,12 @@ func (r *Runtime) StartRecording() (recording.Status, error) {
 	if r.recorder == nil {
 		return recording.Status{}, fmt.Errorf("recording is not available")
 	}
-	return r.recorder.Start()
+	// Label the file with the game currently sending telemetry so recordings are
+	// distinguishable; falls back to a neutral label before the first packet.
+	r.mu.RLock()
+	label := r.source
+	r.mu.RUnlock()
+	return r.recorder.Start(label)
 }
 
 func (r *Runtime) StopRecording() (recording.Status, error) {
@@ -243,13 +251,19 @@ func (r *Runtime) ReplayRecording(name string, maxSamples int) ([]ReplaySample, 
 
 	samples := make([]ReplaySample, 0, len(rawSamples))
 	for _, raw := range rawSamples {
-		telemetry, err := forza.ParseFH6Packet(raw.Packet)
+		// Recordings store raw packets from either game; decode each by content so
+		// Forza and LMU sessions both replay through the same path.
+		telemetry, source, meta, err := decodePacket(raw.Packet)
 		if err != nil {
-			return nil, err
+			// Skip a frame we can't decode rather than failing the whole replay;
+			// a single corrupt or unknown packet shouldn't abort a review.
+			continue
 		}
 		samples = append(samples, ReplaySample{
 			OffsetMS:  raw.OffsetMS,
 			Telemetry: telemetry,
+			Source:    source,
+			Meta:      meta,
 		})
 	}
 	return samples, nil

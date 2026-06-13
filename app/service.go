@@ -241,6 +241,11 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 				log.Printf("ignored malformed lmu packet: %v", err)
 				return nil
 			}
+			// Record the raw JSON packet; replay demultiplexes it by content just
+			// like the live receiver, so LMU sessions record and replay too.
+			if err := s.runtime.RecordPacket(packet, time.Now()); err != nil {
+				return err
+			}
 			return apply(lmuToTelemetry(p), "lmu", lmuToMeta(p))
 		}
 
@@ -255,8 +260,6 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 			return err
 		}
 
-		// Only Forza's raw packets are recorded for now — recordings replay
-		// through the FH6 parser, so LMU needs its own format (future work).
 		if err := s.runtime.RecordPacket(packet, time.Now()); err != nil {
 			return err
 		}

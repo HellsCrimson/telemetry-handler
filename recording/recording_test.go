@@ -2,6 +2,7 @@ package recording
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 )
@@ -12,7 +13,7 @@ func TestRecordAndRead(t *testing.T) {
 		t.Fatalf("NewManager returned error: %v", err)
 	}
 
-	status, err := manager.Start()
+	status, err := manager.Start("forza")
 	if err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestListRecordings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager returned error: %v", err)
 	}
-	if _, err := manager.Start(); err != nil {
+	if _, err := manager.Start("lmu"); err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
 	if _, err := manager.Stop(); err != nil {
@@ -66,5 +67,23 @@ func TestListRecordings(t *testing.T) {
 	}
 	if infos[0].Name == "" || infos[0].Size == 0 {
 		t.Fatalf("unexpected info: %+v", infos[0])
+	}
+	if !strings.HasPrefix(infos[0].Name, "lmu-") {
+		t.Fatalf("name = %q, want lmu- prefix", infos[0].Name)
+	}
+}
+
+func TestSanitizeLabel(t *testing.T) {
+	cases := map[string]string{
+		"forza":     "forza",
+		"lmu":       "lmu",
+		"":          "session",
+		"../../etc": "etc",
+		"LMU 2":     "lmu2",
+	}
+	for in, want := range cases {
+		if got := sanitizeLabel(in); got != want {
+			t.Errorf("sanitizeLabel(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
