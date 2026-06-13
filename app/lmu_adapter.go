@@ -43,10 +43,11 @@ func lmuToTelemetry(p lmu.Packet) forza.Telemetry {
 // forza.Telemetry model. Surfaced on the dashboard's Info tab.
 func lmuToMeta(p lmu.Packet) TelemetryMeta {
 	return TelemetryMeta{
-		Car:         p.VehicleName,
-		Track:       p.TrackName,
-		SessionTime: p.ElapsedTime,
-		NumVehicles: int(p.NumVehicles),
+		Car:              p.VehicleName,
+		Track:            p.TrackName,
+		SessionTime:      p.ElapsedTime,
+		NumVehicles:      int(p.NumVehicles),
+		SteeringRangeDeg: p.SteeringRange,
 	}
 }
 

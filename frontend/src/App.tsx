@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Service } from "../bindings/telemetry-handler/app";
 import {
   type HistorySample,
   type Game,
   type ChartDefinition,
   chartDefinitions,
+  semanticColors,
   colorForField,
   formatValue,
   formatBytes,
@@ -22,7 +23,7 @@ import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
 
 const HISTORY_MS = 120000;
 
-type SnapshotMeta = { car: string; track: string; session_time: number; num_vehicles: number };
+type SnapshotMeta = { car: string; track: string; session_time: number; num_vehicles: number; steering_range_deg: number };
 type Snapshot = { telemetry: Record<string, any>; received_at: string; available: boolean; source?: string; meta?: SnapshotMeta };
 
 const TABS = [
@@ -63,6 +64,13 @@ export default function App() {
   const [monitorList, setMonitorList] = useState<string[]>([]);
   const [configError, setConfigError] = useState<{ path: string; error: string } | null>(null);
 
+  // Fuel laps-remaining estimate. Neither game sends laps-of-fuel-left directly,
+  // so we estimate it from consumption per completed lap (like the in-game
+  // readout). perLap is in the game's fuel unit (litres for LMU, tank fraction
+  // for Forza); lapsLeft is unit-agnostic.
+  const [fuelEstimate, setFuelEstimate] = useState<{ perLap: number; lapsLeft: number } | null>(null);
+  const fuelRef = useRef({ car: NaN, lap: -1, lapStartFuel: 0, perLapHistory: [] as number[] });
+
   const [report, setReport] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [reviewHistory, setReviewHistory] = useState<HistorySample[]>([]);
@@ -97,6 +105,39 @@ export default function App() {
     setStatusLevel(level);
   }, []);
 
+  // updateFuel tracks per-lap fuel consumption and projects laps remaining.
+  // It rebaselines on car change, session restart (lap going backwards) and
+  // refuelling (fuel going up), so the estimate follows the in-game one.
+  const updateFuel = useCallback((t: Record<string, any>) => {
+    const car = Number(t.CarOrdinal ?? 0);
+    const lap = Number(t.LapNumber ?? 0);
+    const fuel = Number(t.Fuel ?? 0);
+    const r = fuelRef.current;
+
+    if (car !== r.car || lap < r.lap) {
+      r.car = car;
+      r.lap = lap;
+      r.lapStartFuel = fuel;
+      r.perLapHistory = [];
+      setFuelEstimate(null);
+      return;
+    }
+    if (fuel > r.lapStartFuel + 1e-4) r.lapStartFuel = fuel; // refuel / pit
+    if (lap > r.lap) {
+      const used = r.lapStartFuel - fuel;
+      if (used > 0) {
+        r.perLapHistory.push(used);
+        if (r.perLapHistory.length > 5) r.perLapHistory.shift();
+      }
+      r.lap = lap;
+      r.lapStartFuel = fuel;
+    }
+    if (fuel > 0 && r.perLapHistory.length > 0) {
+      const avg = r.perLapHistory.reduce((a, b) => a + b, 0) / r.perLapHistory.length;
+      if (avg > 0) setFuelEstimate({ perLap: avg, lapsLeft: fuel / avg });
+    }
+  }, []);
+
   const ingest = useCallback((snap: Snapshot) => {
     if (!snap.available) {
       setStatus("Waiting for telemetry");
@@ -112,10 +153,11 @@ export default function App() {
         while (next.length > 0 && next[0].time < cutoff) next.shift();
         return next;
       });
+      updateFuel(snap.telemetry);
     }
     const raceText = snap.telemetry.IsRaceOn === 1 ? "race on" : "race off";
     setStatus(`Telemetry ${raceText} · ${new Date(snap.received_at).toLocaleTimeString()}`);
-  }, [setStatus]);
+  }, [setStatus, updateFuel]);
 
   function refreshRecordingStatus() {
     Service.GetRecordingStatus().then(setRecordingStatus).catch(() => {});
@@ -480,7 +522,8 @@ export default function App() {
         )}
 
         {activeTab === "engine" && (
-          <ChartTab group="engineReadouts" telemetry={t} chartIds={["chartEngineMain", "chartEnginePower"]} history={history} game={game} />
+          <ChartTab group="engineReadouts" telemetry={t} chartIds={["chartEngineMain", "chartEnginePower"]} history={history} game={game}
+            extra={<FuelEstimate game={game} estimate={fuelEstimate} />} />
         )}
         {activeTab === "inputs" && (
           <ChartTab group="inputReadouts" telemetry={t} chartIds={["chartInputsPedals", "chartInputsSteer"]} history={history} game={game} />
@@ -702,7 +745,9 @@ export default function App() {
                       <label>Size <input type="number" min={16} max={256} value={steeringSize} onChange={(e) => patch((c) => (c.overlay.steering_size = Number(e.target.value)))} /></label>
                       <label>Wheel X (px) <input type="number" min={0} value={placement.steeringX} onChange={(e) => patchPlacement({ steeringX: Number(e.target.value) })} /></label>
                       <label>Wheel Y (px) <input type="number" min={0} value={placement.steeringY} onChange={(e) => patchPlacement({ steeringY: Number(e.target.value) })} /></label>
+                      <label>Rotation range (°) <input type="number" min={90} max={1800} step={10} value={num(o.steering_range_deg, 1080)} onChange={(e) => patch((c) => (c.overlay.steering_range_deg = Number(e.target.value)))} /></label>
                     </div>
+                    <p className="hint">Lock-to-lock wheel rotation. Used for Forza; LMU reports its own per-car range, which takes over automatically.</p>
                     <label>Custom wheel image <input autoComplete="off" placeholder="/path/to/wheel.png (optional, square PNG)" value={o.steering_image_path ?? ""} onChange={(e) => patch((c) => (c.overlay.steering_image_path = e.target.value))} /></label>
                     <p className="hint">Apply restarts a running overlay so changes take effect immediately. Save to persist to config.json.</p>
                   </div>
@@ -766,6 +811,7 @@ function InfoPage({ game, telemetry, meta, source, receivedAt }: {
   if (game === "lmu") {
     if (meta?.car) car.push(["Car", meta.car]);
     if (meta?.track) car.push(["Track", meta.track]);
+    if (meta && meta.steering_range_deg > 0) car.push(["Steering range", `${Math.round(meta.steering_range_deg)}°`]);
   } else if (t) {
     if (t.CarOrdinal) car.push(["Car ordinal", `#${t.CarOrdinal}`]);
     if (t.DrivetrainType >= 0 && t.DrivetrainType <= 2) car.push(["Drivetrain", DRIVETRAINS[t.DrivetrainType]]);
@@ -801,6 +847,31 @@ function InfoPage({ game, telemetry, meta, source, receivedAt }: {
   );
 }
 
+// FuelEstimate shows the projected laps of fuel remaining (estimated from
+// per-lap consumption) plus the per-lap burn. perLap is litres for LMU and a
+// tank fraction for Forza, so it is formatted per game.
+function FuelEstimate({ game, estimate }: { game: Game; estimate: { perLap: number; lapsLeft: number } | null }) {
+  const lapsLeft = estimate ? estimate.lapsLeft.toFixed(1) : "—";
+  const perLap = !estimate
+    ? "—"
+    : game === "lmu"
+      ? `${estimate.perLap.toFixed(2)} L`
+      : `${(estimate.perLap * 100).toFixed(1)} %`;
+  const accent = { ["--accent" as any]: semanticColors.Fuel };
+  return (
+    <div className="readouts">
+      <div className="readout" style={accent}>
+        <span>Fuel laps left (est.)</span>
+        <strong>{lapsLeft}</strong>
+      </div>
+      <div className="readout" style={accent}>
+        <span>Fuel / lap</span>
+        <strong>{perLap}</strong>
+      </div>
+    </div>
+  );
+}
+
 function ReadoutGroup({ group, telemetry, game = "unknown" }: { group: string; telemetry?: Record<string, any>; game?: Game }) {
   const rows = filterReadoutRows(group, game);
   return (
@@ -818,7 +889,7 @@ function ReadoutGroup({ group, telemetry, game = "unknown" }: { group: string; t
   );
 }
 
-function ChartTab({ group, telemetry, chartIds, history, game }: { group: string; telemetry?: Record<string, any>; chartIds: string[]; history: HistorySample[]; game: Game }) {
+function ChartTab({ group, telemetry, chartIds, history, game, extra }: { group: string; telemetry?: Record<string, any>; chartIds: string[]; history: HistorySample[]; game: Game; extra?: ReactNode }) {
   // Drop series the active game does not provide, and skip charts left empty.
   const charts = chartIds
     .map((id) => ({ id, definition: filterChart(id, game) }))
@@ -826,6 +897,7 @@ function ChartTab({ group, telemetry, chartIds, history, game }: { group: string
   return (
     <section className="tabpage active">
       <ReadoutGroup group={group} telemetry={telemetry} game={game} />
+      {extra}
       <div className="charts">
         {charts.map(({ id, definition }) => (
           <Chart key={id} definition={definition} history={history} />

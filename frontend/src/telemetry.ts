@@ -19,6 +19,14 @@ export interface ChartField {
 export interface ChartDefinition {
   title: string;
   fields: ChartField[];
+  // yMin pins the y-axis minimum (e.g. 0). When undefined the axis auto-scales
+  // around the data range.
+  yMin?: number;
+  // yMaxField pins the y-axis maximum to the largest value of this telemetry
+  // field seen in the window (plus yMaxPad). Used to scale the RPM graph to the
+  // engine's max RPM instead of drawing max RPM as its own line.
+  yMaxField?: string;
+  yMaxPad?: number;
 }
 
 // [label, field, digits?, transform?, suffix?]
@@ -81,7 +89,6 @@ function axisSeries(prefix: string): ChartField[] {
 
 export const readoutGroups: Record<string, ReadoutRow[]> = {
   engineReadouts: [
-    ["Engine Max RPM", "EngineMaxRpm", 0],
     ["Engine Idle RPM", "EngineIdleRpm", 0],
     ["Current RPM", "CurrentEngineRpm", 0],
     ["Speed", "Speed", 1, (v) => v * 3.6, "km/h"],
@@ -162,14 +169,16 @@ export const chartDefinitions: Record<string, ChartDefinition> = {
   },
   chartEngineMain: {
     title: "RPM and Speed",
+    yMaxField: "EngineMaxRpm",
+    yMaxPad: 500,
     fields: [
       { name: "RPM", field: "CurrentEngineRpm" },
-      { name: "Max RPM", field: "EngineMaxRpm" },
       { name: "Speed km/h", field: "Speed", color: semanticColors.Speed, transform: (v) => v * 3.6 },
     ],
   },
   chartEnginePower: {
     title: "Powertrain",
+    yMin: 0,
     fields: [
       { name: "Power kW", field: "Power", color: semanticColors.Power, transform: (v) => v / 1000 },
       { name: "Torque Nm", field: "Torque" },

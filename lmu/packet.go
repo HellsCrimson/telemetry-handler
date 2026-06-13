@@ -30,6 +30,9 @@ type Packet struct {
 	Steering     float64 `json:"steering"` // -1..1
 	Clutch       float64 `json:"clutch"`   // 0..1
 	Fuel         float64 `json:"fuel"`     // liters
+	// SteeringRange is the car's lock-to-lock steering rotation in degrees
+	// (rF2 mPhysicalSteeringWheelRange). 0 when unavailable.
+	SteeringRange float64 `json:"steering_range"`
 }
 
 // LooksLikePacket cheaply detects an lmu-bridge datagram so a single UDP

@@ -5,12 +5,39 @@ import (
 	"math"
 	"time"
 
+	"telemetry-handler/config"
 	"telemetry-handler/forza"
 )
 
 // pedalHistorySeconds is how many seconds of throttle/brake history the overlay
 // graph shows.
 const pedalHistorySeconds = 4.0
+
+// defaultSteeringRangeDeg is the lock-to-lock wheel rotation used when neither
+// the game (Forza) nor the config supplies one.
+const defaultSteeringRangeDeg = 1080.0
+
+// effectiveSteeringRange picks the steering range to display: the per-car value
+// the game reported (LMU) when present, else the configured fallback, else the
+// built-in default.
+func effectiveSteeringRange(telemetryRangeDeg float64, ov config.Overlay) float64 {
+	if telemetryRangeDeg > 0 {
+		return telemetryRangeDeg
+	}
+	if ov.SteeringRangeDeg > 0 {
+		return ov.SteeringRangeDeg
+	}
+	return defaultSteeringRangeDeg
+}
+
+// steerToDegrees maps the steering input (Forza/LMU both normalised to ±127) to
+// a signed wheel rotation in degrees over the given lock-to-lock range.
+func steerToDegrees(steer int8, rangeDeg float64) float64 {
+	if rangeDeg <= 0 {
+		rangeDeg = defaultSteeringRangeDeg
+	}
+	return float64(steer) / 127.0 * (rangeDeg / 2.0)
+}
 
 type HUD struct {
 	Connected       bool
@@ -27,7 +54,9 @@ type HUD struct {
 	ThrottleHistory []float64
 	BrakeHistory    []float64
 	HistoryCap      int
-	SteeringAngle   int8
+	// SteeringDegrees is the signed wheel rotation to display (lock-to-lock range
+	// already applied), so the backend just rotates the image by this much.
+	SteeringDegrees float64
 }
 
 // FormatHUD builds the instantaneous HUD view model from a telemetry sample. It
@@ -41,18 +70,19 @@ func FormatHUD(t forza.Telemetry, available bool, receivedAt time.Time, now time
 	currentRPM := float64(t.CurrentEngineRpm)
 
 	return HUD{
-		Connected:     connected,
-		Stale:         stale,
-		SpeedKPH:      fmt.Sprintf("%.0f", float64(t.Speed)*3.6),
-		Gear:          gearLabel(t.Gear, 0),
-		RPM:           fmt.Sprintf("%.0f", currentRPM),
-		MaxRPM:        fmt.Sprintf("%.0f", maxRPM),
-		RPMRatio:      clampRatio(currentRPM, maxRPM),
-		Throttle:      pedalRatio(t.Accel),
-		Brake:         pedalRatio(t.Brake),
-		Clutch:        pedalRatio(t.Clutch),
-		HandBrake:     pedalRatio(t.HandBrake),
-		SteeringAngle: t.Steer,
+		Connected: connected,
+		Stale:     stale,
+		SpeedKPH:  fmt.Sprintf("%.0f", float64(t.Speed)*3.6),
+		Gear:      gearLabel(t.Gear, 0),
+		RPM:       fmt.Sprintf("%.0f", currentRPM),
+		MaxRPM:    fmt.Sprintf("%.0f", maxRPM),
+		RPMRatio:  clampRatio(currentRPM, maxRPM),
+		Throttle:  pedalRatio(t.Accel),
+		Brake:     pedalRatio(t.Brake),
+		Clutch:    pedalRatio(t.Clutch),
+		HandBrake: pedalRatio(t.HandBrake),
+		// Default range; build() recomputes this with the per-car/config range.
+		SteeringDegrees: steerToDegrees(t.Steer, defaultSteeringRangeDeg),
 	}
 }
 
@@ -98,8 +128,9 @@ func newHUDHistory(updateHz float64) *hudHistory {
 	return &hudHistory{cap: n}
 }
 
-func (h *hudHistory) build(t forza.Telemetry, available bool, receivedAt, now time.Time) HUD {
+func (h *hudHistory) build(t forza.Telemetry, available bool, receivedAt, now time.Time, steeringRangeDeg float64) HUD {
 	hud := FormatHUD(t, available, receivedAt, now)
+	hud.SteeringDegrees = steerToDegrees(t.Steer, steeringRangeDeg)
 
 	throttle, brake := hud.Throttle, hud.Brake
 	if !hud.Connected {

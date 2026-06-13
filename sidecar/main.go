@@ -99,6 +99,10 @@ const (
 	vClutch       = 412 // double mUnfilteredClutch 0..1
 	vFuel         = 524 // double mFuel, liters (filtered inputs 420..451, misc/aero 452..523)
 	vEngineMaxRPM = 532 // double mEngineMaxRPM, rev limit
+	// float (not double): mPhysicalSteeringWheelRange, lock-to-lock degrees. Past
+	// damage/impact/torque/compound-name fields; verified against a live dump is
+	// recommended (a wrong offset is caught by the sanity clamp below).
+	vSteerRange = 692
 )
 
 // packet is our own UDP wire format — deliberately not the Forza FH6 layout.
@@ -106,29 +110,45 @@ const (
 // in the main app) and easy to evolve; swap to a binary encoding later if the
 // rate ever justifies it.
 type packet struct {
-	Source       string  `json:"source"` // always "lmu"
-	Seq          uint64  `json:"seq"`
-	Version      uint32  `json:"version"` // SMMP update counter (sanity/debug)
-	NumVehicles  int32   `json:"num_vehicles"`
-	VehicleName  string  `json:"vehicle_name"`
-	TrackName    string  `json:"track_name"`
-	ElapsedTime  float64 `json:"elapsed_time"`
-	LapNumber    int32   `json:"lap_number"`
-	Gear         int32   `json:"gear"` // -1=reverse, 0=neutral, 1+=forward
-	EngineRPM    float64 `json:"engine_rpm"`
-	EngineMaxRPM float64 `json:"engine_max_rpm"` // rev limit
-	SpeedMS      float64 `json:"speed_ms"`       // magnitude of local velocity
-	Throttle     float64 `json:"throttle"`
-	Brake        float64 `json:"brake"`
-	Steering     float64 `json:"steering"`
-	Clutch       float64 `json:"clutch"`
-	Fuel         float64 `json:"fuel"` // liters
+	Source        string  `json:"source"` // always "lmu"
+	Seq           uint64  `json:"seq"`
+	Version       uint32  `json:"version"` // SMMP update counter (sanity/debug)
+	NumVehicles   int32   `json:"num_vehicles"`
+	VehicleName   string  `json:"vehicle_name"`
+	TrackName     string  `json:"track_name"`
+	ElapsedTime   float64 `json:"elapsed_time"`
+	LapNumber     int32   `json:"lap_number"`
+	Gear          int32   `json:"gear"` // -1=reverse, 0=neutral, 1+=forward
+	EngineRPM     float64 `json:"engine_rpm"`
+	EngineMaxRPM  float64 `json:"engine_max_rpm"` // rev limit
+	SpeedMS       float64 `json:"speed_ms"`       // magnitude of local velocity
+	Throttle      float64 `json:"throttle"`
+	Brake         float64 `json:"brake"`
+	Steering      float64 `json:"steering"`
+	Clutch        float64 `json:"clutch"`
+	Fuel          float64 `json:"fuel"`           // liters
+	SteeringRange float64 `json:"steering_range"` // lock-to-lock degrees (0 = unknown)
 }
 
 func u32(b []byte, off int) uint32 { return binary.LittleEndian.Uint32(b[off:]) }
 func i32(b []byte, off int) int32  { return int32(binary.LittleEndian.Uint32(b[off:])) }
 func f64(b []byte, off int) float64 {
 	return math.Float64frombits(binary.LittleEndian.Uint64(b[off:]))
+}
+func f32(b []byte, off int) float32 {
+	return math.Float32frombits(binary.LittleEndian.Uint32(b[off:]))
+}
+
+// steeringRange reads the car's lock-to-lock steering range (degrees) at the
+// vehicle base, clamped to a sane window. A value outside [90, 1800] is treated
+// as unknown (0) — this guards against an off telemetry offset producing garbage
+// so the overlay falls back to the configured default instead of a wild angle.
+func steeringRange(buf []byte, base int) float64 {
+	deg := float64(f32(buf, base+vSteerRange))
+	if deg < 90 || deg > 1800 {
+		return 0
+	}
+	return deg
 }
 
 // cstr reads a fixed-width, NUL-terminated C string.
@@ -267,31 +287,33 @@ func main() {
 			}
 		}
 		base := offVehicle0 + chosen*tVehicleStride
-		// Guard against a stride/index that would read past the snapshot.
-		if base+vEngineMaxRPM+8 > len(buf) {
+		// Guard against a stride/index that would read past the snapshot
+		// (vSteerRange is the furthest field we touch).
+		if base+vSteerRange+4 > len(buf) {
 			base = offVehicle0
 			chosen = 0
 		}
 		vx, vy, vz := f64(buf, base+vLocalVel), f64(buf, base+vLocalVel+8), f64(buf, base+vLocalVel+16)
 
 		pkt := packet{
-			Source:       "lmu",
-			Seq:          seq,
-			Version:      u32(buf, offVersionBegin),
-			NumVehicles:  i32(buf, offNumVehicles),
-			VehicleName:  cstr(buf, base+vVehicleName, 64),
-			TrackName:    cstr(buf, base+vTrackName, 64),
-			ElapsedTime:  f64(buf, base+vElapsedTime),
-			LapNumber:    i32(buf, base+vLapNumber),
-			Gear:         i32(buf, base+vGear),
-			EngineRPM:    f64(buf, base+vEngineRPM),
-			EngineMaxRPM: f64(buf, base+vEngineMaxRPM),
-			SpeedMS:      math.Sqrt(vx*vx + vy*vy + vz*vz),
-			Throttle:     f64(buf, base+vThrottle),
-			Brake:        f64(buf, base+vBrake),
-			Steering:     f64(buf, base+vSteering),
-			Clutch:       f64(buf, base+vClutch),
-			Fuel:         f64(buf, base+vFuel),
+			Source:        "lmu",
+			Seq:           seq,
+			Version:       u32(buf, offVersionBegin),
+			NumVehicles:   i32(buf, offNumVehicles),
+			VehicleName:   cstr(buf, base+vVehicleName, 64),
+			TrackName:     cstr(buf, base+vTrackName, 64),
+			ElapsedTime:   f64(buf, base+vElapsedTime),
+			LapNumber:     i32(buf, base+vLapNumber),
+			Gear:          i32(buf, base+vGear),
+			EngineRPM:     f64(buf, base+vEngineRPM),
+			EngineMaxRPM:  f64(buf, base+vEngineMaxRPM),
+			SpeedMS:       math.Sqrt(vx*vx + vy*vy + vz*vz),
+			Throttle:      f64(buf, base+vThrottle),
+			Brake:         f64(buf, base+vBrake),
+			Steering:      f64(buf, base+vSteering),
+			Clutch:        f64(buf, base+vClutch),
+			Fuel:          f64(buf, base+vFuel),
+			SteeringRange: steeringRange(buf, base),
 		}
 		seq++
 
@@ -304,8 +326,8 @@ func main() {
 		}
 
 		if *verbose || time.Since(lastLog) > time.Second {
-			log.Printf("seq=%d veh=%d idx=%d pid=%d car=%q gear=%d rpm=%.0f speed=%.1fm/s thr=%.2f brk=%.2f",
-				pkt.Seq, pkt.NumVehicles, chosen, playerID, pkt.VehicleName, pkt.Gear, pkt.EngineRPM, pkt.SpeedMS, pkt.Throttle, pkt.Brake)
+			log.Printf("seq=%d veh=%d idx=%d pid=%d car=%q gear=%d rpm=%.0f speed=%.1fm/s thr=%.2f brk=%.2f steer_range=%.0f",
+				pkt.Seq, pkt.NumVehicles, chosen, playerID, pkt.VehicleName, pkt.Gear, pkt.EngineRPM, pkt.SpeedMS, pkt.Throttle, pkt.Brake, pkt.SteeringRange)
 			lastLog = time.Now()
 		}
 	}

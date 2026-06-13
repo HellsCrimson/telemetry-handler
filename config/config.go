@@ -8,17 +8,21 @@ import (
 )
 
 const (
-	defaultPath          = "config.json"
-	defaultListenAddr    = "0.0.0.0"
-	defaultListenPort    = 20440
-	defaultPrintHz       = 5
-	defaultRecordDir     = "recordings"
-	defaultOverlayHz     = 10
-	defaultOpacity       = 0.85
-	defaultSteeringSize  = 60
-	defaultOverlayWidth  = 320
-	defaultOverlayHeight = 210
-	defaultOverlayAnchor = "top-left"
+	defaultPath         = "config.json"
+	defaultListenAddr   = "0.0.0.0"
+	defaultListenPort   = 20440
+	defaultPrintHz      = 5
+	defaultRecordDir    = "recordings"
+	defaultOverlayHz    = 10
+	defaultOpacity      = 0.85
+	defaultSteeringSize = 60
+	// defaultSteeringRangeDeg is the lock-to-lock steering rotation (degrees) the
+	// overlay wheel uses when the game does not report a per-car range (Forza).
+	// LMU reports its own range per car, which overrides this.
+	defaultSteeringRangeDeg = 1080
+	defaultOverlayWidth     = 320
+	defaultOverlayHeight    = 210
+	defaultOverlayAnchor    = "top-left"
 	// defaultGameWindowMatch is matched (case-insensitively, as a substring)
 	// against window class/title when auto-detecting which monitor the game is
 	// on. The Proton/Wine window class for Forza is not guaranteed, so this is
@@ -77,6 +81,11 @@ type Overlay struct {
 	// auto-placement (top-right corner) — see SteeringXValue/SteeringYValue.
 	SteeringX *int `json:"steering_x,omitempty"`
 	SteeringY *int `json:"steering_y,omitempty"`
+	// SteeringRangeDeg is the lock-to-lock wheel rotation (degrees) used to map
+	// the steering input to the displayed wheel angle. It is the fallback for
+	// games that do not report a range (Forza); LMU reports a per-car range that
+	// overrides it. 0 means "use the default".
+	SteeringRangeDeg float64 `json:"steering_range_deg,omitempty"`
 }
 
 func Default() Config {
@@ -122,19 +131,20 @@ func Default() Config {
 			Enabled: false,
 		},
 		Overlay: Overlay{
-			Enabled:         false,
-			GameWindowMatch: defaultGameWindowMatch,
-			Width:           intPtr(defaultOverlayWidth),
-			Height:          intPtr(defaultOverlayHeight),
-			Anchor:          defaultOverlayAnchor,
-			MarginTop:       intPtr(0),
-			MarginRight:     intPtr(0),
-			MarginBottom:    intPtr(0),
-			MarginLeft:      intPtr(0),
-			UpdateHz:        defaultOverlayHz,
-			Opacity:         defaultOpacity,
-			ShowSteering:    true,
-			SteeringSize:    intPtr(defaultSteeringSize),
+			Enabled:          false,
+			GameWindowMatch:  defaultGameWindowMatch,
+			Width:            intPtr(defaultOverlayWidth),
+			Height:           intPtr(defaultOverlayHeight),
+			Anchor:           defaultOverlayAnchor,
+			MarginTop:        intPtr(0),
+			MarginRight:      intPtr(0),
+			MarginBottom:     intPtr(0),
+			MarginLeft:       intPtr(0),
+			UpdateHz:         defaultOverlayHz,
+			Opacity:          defaultOpacity,
+			ShowSteering:     true,
+			SteeringSize:     intPtr(defaultSteeringSize),
+			SteeringRangeDeg: defaultSteeringRangeDeg,
 		},
 	}
 }
@@ -265,6 +275,9 @@ func (o Overlay) WithDefaults() Overlay {
 	}
 	if o.SteeringSize == nil {
 		o.SteeringSize = intPtr(defaultSteeringSize)
+	}
+	if o.SteeringRangeDeg <= 0 {
+		o.SteeringRangeDeg = defaultSteeringRangeDeg
 	}
 	if o.GameWindowMatch == "" {
 		o.GameWindowMatch = defaultGameWindowMatch

@@ -138,6 +138,14 @@ export class Overlay {
     "steering_x"?: number | null;
     "steering_y"?: number | null;
 
+    /**
+     * SteeringRangeDeg is the lock-to-lock wheel rotation (degrees) used to map
+     * the steering input to the displayed wheel angle. It is the fallback for
+     * games that do not report a range (Forza); LMU reports a per-car range that
+     * overrides it. 0 means "use the default".
+     */
+    "steering_range_deg"?: number;
+
     /** Creates a new Overlay instance. */
     constructor($$source: Partial<Overlay> = {}) {
         if (!("enabled" in $$source)) {

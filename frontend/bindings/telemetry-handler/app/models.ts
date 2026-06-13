@@ -171,6 +171,13 @@ export class TelemetryMeta {
      */
     "num_vehicles": number;
 
+    /**
+     * SteeringRangeDeg is the car's lock-to-lock steering rotation in degrees
+     * (LMU reports it per car). 0 when the game doesn't provide it (Forza), in
+     * which case the overlay falls back to the configured default.
+     */
+    "steering_range_deg": number;
+
     /** Creates a new TelemetryMeta instance. */
     constructor($$source: Partial<TelemetryMeta> = {}) {
         if (!("car" in $$source)) {
@@ -184,6 +191,9 @@ export class TelemetryMeta {
         }
         if (!("num_vehicles" in $$source)) {
             this["num_vehicles"] = 0;
+        }
+        if (!("steering_range_deg" in $$source)) {
+            this["steering_range_deg"] = 0;
         }
 
         Object.assign(this, $$source);

@@ -22,6 +22,10 @@ type TelemetryMeta struct {
 	Track       string  `json:"track"`        // track name
 	SessionTime float64 `json:"session_time"` // elapsed session time (seconds)
 	NumVehicles int     `json:"num_vehicles"` // cars in the session
+	// SteeringRangeDeg is the car's lock-to-lock steering rotation in degrees
+	// (LMU reports it per car). 0 when the game doesn't provide it (Forza), in
+	// which case the overlay falls back to the configured default.
+	SteeringRangeDeg float64 `json:"steering_range_deg"`
 }
 
 // TelemetrySnapshot is the latest parsed telemetry frame plus metadata about

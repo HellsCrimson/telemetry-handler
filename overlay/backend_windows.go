@@ -312,7 +312,7 @@ func (w *overlayWindow) render(hud HUD) error {
 		steeringSize := w.cfg.SteeringSizeValue()
 		steeringX := width - steeringSize - 64
 		steeringY := 8
-		steeringPixels := w.steeringWheel.GetRotated(hud.SteeringAngle)
+		steeringPixels := w.steeringWheel.GetRotated(hud.SteeringDegrees)
 		drawSteering(pixels, width, height, steeringX, steeringY, steeringSize, w.cfg.Opacity, steeringPixels)
 	}
 

@@ -74,11 +74,10 @@ func LoadSteeringWheel(imagePath string, size int) (*SteeringWheel, error) {
 	return sw, nil
 }
 
-func (sw *SteeringWheel) GetRotated(angle int8) []uint32 {
-	// Map steering angle from [-127, 127] to [-270, 270] degrees
-	// This represents a full 540 degree rotation range
-	rotationDegrees := float64(angle) * (540.0 / 127.0)
-
+// GetRotated returns the wheel image rotated by rotationDegrees (signed; the
+// caller has already applied the car's lock-to-lock range). Results are cached
+// per whole-degree to keep the render loop cheap.
+func (sw *SteeringWheel) GetRotated(rotationDegrees float64) []uint32 {
 	normalizedAngle := int(-rotationDegrees) % 360
 	if normalizedAngle < 0 {
 		normalizedAngle += 360

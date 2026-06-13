@@ -191,9 +191,9 @@ func (s *Service) gamePresent(running bool) bool {
 }
 
 func (s *Service) telemetrySource() overlay.Source {
-	return func() (forza.Telemetry, bool, time.Time) {
+	return func() (forza.Telemetry, bool, time.Time, float64) {
 		snap := s.runtime.LatestTelemetry()
-		return snap.Telemetry, snap.Available, snap.ReceivedAt
+		return snap.Telemetry, snap.Available, snap.ReceivedAt, snap.Meta.SteeringRangeDeg
 	}
 }
 

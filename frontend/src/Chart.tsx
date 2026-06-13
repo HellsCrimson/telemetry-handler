@@ -69,6 +69,18 @@ export default function Chart({ definition, history, xLabels, highlights }: Char
       };
     }
 
+    // Scale the axis to a telemetry field's peak (e.g. engine max RPM) instead
+    // of plotting that value as its own line.
+    let yMax: number | undefined;
+    if (definition.yMaxField) {
+      let peak = 0;
+      for (const sample of history) {
+        const v = Number(sample.telemetry[definition.yMaxField] ?? 0);
+        if (v > peak) peak = v;
+      }
+      if (peak > 0) yMax = peak + (definition.yMaxPad ?? 0);
+    }
+
     chart.setOption({
       backgroundColor: "transparent",
       title: { text: definition.title, left: 10, top: 8, textStyle: { fontSize: 13 } },
@@ -76,7 +88,7 @@ export default function Chart({ definition, history, xLabels, highlights }: Char
       legend: { top: 34, type: "scroll" },
       grid: { left: 46, right: 18, top: 74, bottom: 34 },
       xAxis: { type: "category", boundaryGap: false, data: labels },
-      yAxis: { type: "value", scale: true },
+      yAxis: { type: "value", min: definition.yMin, max: yMax, scale: definition.yMin === undefined && yMax === undefined },
       series,
       animation: false,
     });

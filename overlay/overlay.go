@@ -17,7 +17,9 @@ type Backend interface {
 
 // Source provides the latest telemetry snapshot for the overlay to render.
 // It is polled in-process (no HTTP) at the overlay's configured update rate.
-type Source func() (telemetry forza.Telemetry, available bool, receivedAt time.Time)
+// steeringRangeDeg is the car's lock-to-lock steering rotation when the game
+// reports it (LMU), or 0 to fall back to the configured default (Forza).
+type Source func() (telemetry forza.Telemetry, available bool, receivedAt time.Time, steeringRangeDeg float64)
 
 // Manager owns the lifecycle of a single running overlay so it can be toggled
 // on and off at runtime from the UI.
@@ -94,8 +96,8 @@ func run(ctx context.Context, ov config.Overlay, source Source) error {
 	history := newHUDHistory(ov.UpdateHz)
 
 	updates := make(chan HUD, 1)
-	telemetry, available, receivedAt := source()
-	updates <- history.build(telemetry, available, receivedAt, time.Now())
+	telemetry, available, receivedAt, steerRange := source()
+	updates <- history.build(telemetry, available, receivedAt, time.Now(), effectiveSteeringRange(steerRange, ov))
 
 	errc := make(chan error, 1)
 	go func() {
@@ -112,8 +114,8 @@ func run(ctx context.Context, ov config.Overlay, source Source) error {
 		case err := <-errc:
 			return err
 		case now := <-ticker.C:
-			telemetry, available, receivedAt := source()
-			hud := history.build(telemetry, available, receivedAt, now)
+			telemetry, available, receivedAt, steerRange := source()
+			hud := history.build(telemetry, available, receivedAt, now, effectiveSteeringRange(steerRange, ov))
 			select {
 			case updates <- hud:
 			default:

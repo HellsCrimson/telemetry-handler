@@ -71,7 +71,7 @@ func (waylandBackend) Run(ctx context.Context, cfg config.Overlay, updates <-cha
 		case hud := <-updates:
 			drawHUD(buffer.pixels, width, height, cfg.Opacity, hud)
 			if steeringWheel != nil {
-				steeringPixels := steeringWheel.GetRotated(hud.SteeringAngle)
+				steeringPixels := steeringWheel.GetRotated(hud.SteeringDegrees)
 				drawSteering(buffer.pixels, width, height, steeringX, steeringY, steeringSize, cfg.Opacity, steeringPixels)
 			}
 			if err := surface.CommitBuffer(buffer); err != nil {
