@@ -207,8 +207,8 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 	// (overlay + dashboard), MOZA RPM lighting, and optional terminal output.
 	// source identifies the game ("forza"/"lmu") so the dashboard can tailor
 	// which tabs and readouts it shows.
-	apply := func(t forza.Telemetry, source string) error {
-		s.runtime.SetTelemetry(t, source)
+	apply := func(t forza.Telemetry, source string, meta TelemetryMeta) error {
+		s.runtime.SetTelemetry(t, source, meta)
 		if s.runtime.MozaEnabled() {
 			currentRPM := t.CurrentEngineRpm
 			if t.IsRaceOn == 0 {
@@ -241,7 +241,7 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 				log.Printf("ignored malformed lmu packet: %v", err)
 				return nil
 			}
-			return apply(lmuToTelemetry(p), "lmu")
+			return apply(lmuToTelemetry(p), "lmu", lmuToMeta(p))
 		}
 
 		telemetry, err := forza.ParseFH6Packet(packet)
@@ -260,7 +260,7 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 		if err := s.runtime.RecordPacket(packet, time.Now()); err != nil {
 			return err
 		}
-		return apply(telemetry, "forza")
+		return apply(telemetry, "forza", TelemetryMeta{})
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("receiver: %v", err)

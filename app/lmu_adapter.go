@@ -38,6 +38,18 @@ func lmuToTelemetry(p lmu.Packet) forza.Telemetry {
 	}
 }
 
+// lmuToMeta extracts the descriptive session info an lmu-bridge packet carries
+// (car/track names, session time, field size) that does not fit the binary
+// forza.Telemetry model. Surfaced on the dashboard's Info tab.
+func lmuToMeta(p lmu.Packet) TelemetryMeta {
+	return TelemetryMeta{
+		Car:         p.VehicleName,
+		Track:       p.TrackName,
+		SessionTime: p.ElapsedTime,
+		NumVehicles: int(p.NumVehicles),
+	}
+}
+
 // lmuGear converts an LMU gear (-1=reverse, 0=neutral, 1+=forward) into Forza's
 // encoding the overlay expects (0=reverse, neutral as the top-of-range value).
 func lmuGear(g int32) uint8 {

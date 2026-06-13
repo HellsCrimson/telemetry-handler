@@ -13,6 +13,17 @@ import (
 	"telemetry-handler/recording"
 )
 
+// TelemetryMeta carries descriptive session info that does not fit the binary
+// forza.Telemetry model (which has no string fields). It is populated per source
+// — currently LMU, which sends the car/track names the dashboard's Info tab
+// shows. Forza leaves it zero-valued.
+type TelemetryMeta struct {
+	Car         string  `json:"car"`          // vehicle/car name
+	Track       string  `json:"track"`        // track name
+	SessionTime float64 `json:"session_time"` // elapsed session time (seconds)
+	NumVehicles int     `json:"num_vehicles"` // cars in the session
+}
+
 // TelemetrySnapshot is the latest parsed telemetry frame plus metadata about
 // when it was received. It is returned to the frontend over the Wails bindings.
 type TelemetrySnapshot struct {
@@ -23,6 +34,9 @@ type TelemetrySnapshot struct {
 	// "lmu"), so the dashboard can tailor which tabs/readouts it shows. Empty
 	// until the first packet arrives.
 	Source string `json:"source"`
+	// Meta is descriptive session info (car/track names, etc.) that has no place
+	// in the binary telemetry struct. Surfaced on the dashboard's Info tab.
+	Meta TelemetryMeta `json:"meta"`
 }
 
 // ReplaySample is a single telemetry frame from a recording, offset from the
@@ -44,6 +58,7 @@ type Runtime struct {
 	seen      bool
 	seenAt    time.Time
 	source    string
+	meta      TelemetryMeta
 	moza      *moza.Driver
 	recorder  *recording.Manager
 
@@ -92,18 +107,21 @@ func (r *Runtime) LatestTelemetry() TelemetrySnapshot {
 		ReceivedAt: r.seenAt,
 		Available:  r.seen,
 		Source:     r.source,
+		Meta:       r.meta,
 	}
 }
 
-// SetTelemetry records the latest frame and the game it came from (source is
-// "forza" or "lmu"), used by the dashboard to tailor its layout per game.
-func (r *Runtime) SetTelemetry(telemetry forza.Telemetry, source string) {
+// SetTelemetry records the latest frame, the game it came from (source is
+// "forza" or "lmu") and descriptive session meta, used by the dashboard to
+// tailor its layout per game and populate the Info tab.
+func (r *Runtime) SetTelemetry(telemetry forza.Telemetry, source string, meta TelemetryMeta) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.telemetry = telemetry
 	r.seen = true
 	r.seenAt = time.Now()
 	r.source = source
+	r.meta = meta
 }
 
 func (r *Runtime) PrintEvery() time.Duration {

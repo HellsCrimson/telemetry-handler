@@ -145,6 +145,60 @@ export class ReplaySample {
 }
 
 /**
+ * TelemetryMeta carries descriptive session info that does not fit the binary
+ * forza.Telemetry model (which has no string fields). It is populated per source
+ * — currently LMU, which sends the car/track names the dashboard's Info tab
+ * shows. Forza leaves it zero-valued.
+ */
+export class TelemetryMeta {
+    /**
+     * vehicle/car name
+     */
+    "car": string;
+
+    /**
+     * track name
+     */
+    "track": string;
+
+    /**
+     * elapsed session time (seconds)
+     */
+    "session_time": number;
+
+    /**
+     * cars in the session
+     */
+    "num_vehicles": number;
+
+    /** Creates a new TelemetryMeta instance. */
+    constructor($$source: Partial<TelemetryMeta> = {}) {
+        if (!("car" in $$source)) {
+            this["car"] = "";
+        }
+        if (!("track" in $$source)) {
+            this["track"] = "";
+        }
+        if (!("session_time" in $$source)) {
+            this["session_time"] = 0;
+        }
+        if (!("num_vehicles" in $$source)) {
+            this["num_vehicles"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TelemetryMeta instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TelemetryMeta {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TelemetryMeta($$parsedSource as Partial<TelemetryMeta>);
+    }
+}
+
+/**
  * TelemetrySnapshot is the latest parsed telemetry frame plus metadata about
  * when it was received. It is returned to the frontend over the Wails bindings.
  */
@@ -160,6 +214,12 @@ export class TelemetrySnapshot {
      */
     "source": string;
 
+    /**
+     * Meta is descriptive session info (car/track names, etc.) that has no place
+     * in the binary telemetry struct. Surfaced on the dashboard's Info tab.
+     */
+    "meta": TelemetryMeta;
+
     /** Creates a new TelemetrySnapshot instance. */
     constructor($$source: Partial<TelemetrySnapshot> = {}) {
         if (!("telemetry" in $$source)) {
@@ -174,6 +234,9 @@ export class TelemetrySnapshot {
         if (!("source" in $$source)) {
             this["source"] = "";
         }
+        if (!("meta" in $$source)) {
+            this["meta"] = (new TelemetryMeta());
+        }
 
         Object.assign(this, $$source);
     }
@@ -183,9 +246,13 @@ export class TelemetrySnapshot {
      */
     static createFrom($$source: any = {}): TelemetrySnapshot {
         const $$createField0_0 = $$createType0;
+        const $$createField4_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("telemetry" in $$parsedSource) {
             $$parsedSource["telemetry"] = $$createField0_0($$parsedSource["telemetry"]);
+        }
+        if ("meta" in $$parsedSource) {
+            $$parsedSource["meta"] = $$createField4_0($$parsedSource["meta"]);
         }
         return new TelemetrySnapshot($$parsedSource as Partial<TelemetrySnapshot>);
     }
@@ -193,3 +260,4 @@ export class TelemetrySnapshot {
 
 // Private type creation functions
 const $$createType0 = forza$0.Telemetry.createFrom;
+const $$createType1 = TelemetryMeta.createFrom;

@@ -22,9 +22,11 @@ import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
 
 const HISTORY_MS = 120000;
 
-type Snapshot = { telemetry: Record<string, any>; received_at: string; available: boolean; source?: string };
+type SnapshotMeta = { car: string; track: string; session_time: number; num_vehicles: number };
+type Snapshot = { telemetry: Record<string, any>; received_at: string; available: boolean; source?: string; meta?: SnapshotMeta };
 
 const TABS = [
+  ["info", "Info"],
   ["live", "Live"],
   ["engine", "Engine"],
   ["inputs", "Inputs"],
@@ -39,7 +41,7 @@ const TABS = [
 ] as const;
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>("live");
+  const [activeTab, setActiveTab] = useState<string>("info");
   const [config, setConfig] = useState<any>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [history, setHistory] = useState<HistorySample[]>([]);
@@ -427,6 +429,10 @@ export default function App() {
       </nav>
 
       <main>
+        {activeTab === "info" && (
+          <InfoPage game={game} telemetry={t} meta={snapshot?.meta} source={snapshot?.source} receivedAt={snapshot?.received_at} />
+        )}
+
         {activeTab === "live" && (
           <section className="tabpage active">
             <div className="telemetry">
@@ -713,6 +719,86 @@ export default function App() {
 function rpmRatio(t?: Record<string, any>): number {
   if (!t || !(t.EngineMaxRpm > 0)) return 0;
   return Math.min(1, Math.max(0, t.CurrentEngineRpm / t.EngineMaxRpm));
+}
+
+const GAME_NAMES: Record<string, string> = {
+  forza: "Forza Motorsport",
+  lmu: "Le Mans Ultimate",
+};
+
+const DRIVETRAINS = ["FWD", "RWD", "AWD"];
+
+// formatSessionTime renders elapsed seconds as h:mm:ss (or m:ss under an hour).
+function formatSessionTime(seconds: number): string {
+  if (!(seconds > 0)) return "—";
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+}
+
+// InfoPage is the landing overview: which game is feeding telemetry, the session
+// status, and descriptive car/track info. Rows are game-aware — LMU shows the
+// car/track names and session time from the metadata channel; Forza shows the
+// car identifiers carried in its telemetry struct. Only populated rows render.
+function InfoPage({ game, telemetry, meta, source, receivedAt }: {
+  game: Game;
+  telemetry?: Record<string, any>;
+  meta?: SnapshotMeta;
+  source?: string;
+  receivedAt?: string;
+}) {
+  const t = telemetry;
+
+  const session: [string, string][] = [
+    ["Game", source ? GAME_NAMES[source] ?? source : "—"],
+    ["Status", receivedAt ? (t?.IsRaceOn === 1 ? "Race on" : "Race off") : "Waiting for telemetry"],
+  ];
+  if (receivedAt) session.push(["Last update", new Date(receivedAt).toLocaleTimeString()]);
+  if (game === "lmu" && meta) {
+    if (meta.session_time > 0) session.push(["Session time", formatSessionTime(meta.session_time)]);
+    if (meta.num_vehicles > 0) session.push(["Cars in session", String(meta.num_vehicles)]);
+  }
+
+  const car: [string, string][] = [];
+  if (game === "lmu") {
+    if (meta?.car) car.push(["Car", meta.car]);
+    if (meta?.track) car.push(["Track", meta.track]);
+  } else if (t) {
+    if (t.CarOrdinal) car.push(["Car ordinal", `#${t.CarOrdinal}`]);
+    if (t.DrivetrainType >= 0 && t.DrivetrainType <= 2) car.push(["Drivetrain", DRIVETRAINS[t.DrivetrainType]]);
+    if (t.NumCylinders) car.push(["Cylinders", String(t.NumCylinders)]);
+    if (t.CarClass) car.push(["Car class", String(t.CarClass)]);
+    if (t.CarPerformanceIndex) car.push(["Performance index", String(t.CarPerformanceIndex)]);
+    if (t.CarGroup) car.push(["Car group", String(t.CarGroup)]);
+  }
+
+  return (
+    <section className="tabpage active">
+      <div className="settings">
+        <div className="panel">
+          <h2>Session</h2>
+          <dl className="kv">
+            {session.map(([k, v]) => (
+              <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+            ))}
+          </dl>
+        </div>
+        {car.length > 0 && (
+          <div className="panel">
+            <h2>Car &amp; Track</h2>
+            <dl className="kv">
+              {car.map(([k, v]) => (
+                <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+              ))}
+            </dl>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function ReadoutGroup({ group, telemetry, game = "unknown" }: { group: string; telemetry?: Record<string, any>; game?: Game }) {

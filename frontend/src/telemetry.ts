@@ -268,9 +268,21 @@ export function isTabAvailable(game: Game, tab: string): boolean {
   return !(HIDDEN_TABS[game] ?? []).includes(tab);
 }
 
+// Per-game readout overrides: the same forza.Telemetry field can carry different
+// units per game. Notably Fuel is liters in LMU but a 0..1 tank fraction in
+// Forza, so each game formats it differently. Keyed by field name.
+const READOUT_OVERRIDES: Partial<Record<Game, Record<string, ReadoutRow>>> = {
+  lmu: {
+    Fuel: ["Fuel", "Fuel", 1, null, "L"],
+  },
+};
+
 export function filterReadoutRows(group: string, game: Game): ReadoutRow[] {
   const rows = readoutGroups[group] ?? [];
-  return rows.filter(([, field]) => isFieldAvailable(game, field));
+  const overrides = READOUT_OVERRIDES[game] ?? {};
+  return rows
+    .filter(([, field]) => isFieldAvailable(game, field))
+    .map((row) => overrides[row[1] as string] ?? row);
 }
 
 // filterChart returns the chart definition with unavailable series removed, or

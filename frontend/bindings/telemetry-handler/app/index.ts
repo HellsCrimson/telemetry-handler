@@ -11,5 +11,6 @@ export {
     MonitorInfo,
     OverlayStatus,
     ReplaySample,
+    TelemetryMeta,
     TelemetrySnapshot
 } from "./models.js";
