@@ -189,8 +189,11 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 			if t.IsRaceOn == 0 {
 				currentRPM = 0
 			}
+			// MOZA RPM lighting is a best-effort side effect. A transient USB
+			// serial hiccup (EIO on /dev/ttyACM*) must not tear down the whole
+			// telemetry receiver — log it and keep feeding dashboard/overlay.
 			if err := s.runtime.UpdateMozaRPM(currentRPM, t.EngineMaxRpm); err != nil {
-				return err
+				log.Printf("moza: rpm update failed: %v", err)
 			}
 		}
 		if s.runtime.TerminalPrintEnabled() {

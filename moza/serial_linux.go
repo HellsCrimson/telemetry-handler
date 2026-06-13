@@ -31,6 +31,11 @@ type Driver struct {
 	lastUpdate time.Time
 	lastMask   uint16
 	buttonMask uint16
+	// port and setupOpts let the driver transparently reopen the serial
+	// device after a transient USB failure (see reconnect.go).
+	port       string
+	setupOpts  Options
+	lastReopen time.Time
 }
 
 func openSerial(path string) (*serialConn, error) {
@@ -168,6 +173,8 @@ func NewDriver(options Options) (*Driver, error) {
 		updateMin:  time.Duration(float64(time.Second) / options.UpdateHz),
 		lastMask:   ^uint16(0),
 		buttonMask: options.ButtonMask,
+		port:       options.Port,
+		setupOpts:  options,
 	}
 	if err := driver.setup(options); err != nil {
 		conn.Close()
@@ -212,7 +219,7 @@ func (d *Driver) UpdateRPM(currentRPM, maxRPM float32) error {
 		return nil
 	}
 
-	if err := d.writeMasks(mask, d.buttonMask); err != nil {
+	if err := d.writeMasksWithRetry(mask, d.buttonMask); err != nil {
 		return err
 	}
 	d.lastMask = mask
@@ -234,6 +241,7 @@ func (d *Driver) Apply(options Options) error {
 	options.ButtonMask &= 0x03ff
 	d.updateMin = time.Duration(float64(time.Second) / options.UpdateHz)
 	d.buttonMask = options.ButtonMask
+	d.setupOpts = options
 	d.lastMask = ^uint16(0)
 	d.lastUpdate = time.Time{}
 	return d.setup(options)
