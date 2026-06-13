@@ -222,6 +222,67 @@ export const chartDefinitions: Record<string, ChartDefinition> = {
   },
 };
 
+// --- Per-game capabilities ---
+// The receiver demultiplexes Forza and LMU; each TelemetrySnapshot reports the
+// game that produced it. LMU exposes far less data than Forza (it is mapped into
+// the same forza.Telemetry model, leaving most fields empty), so the dashboard
+// hides tabs and readouts that game cannot fill.
+
+export type Game = "forza" | "lmu" | "unknown";
+
+// Telemetry fields actually populated by LMU (see app/lmu_adapter.go). Anything
+// outside this set is empty/meaningless under LMU and is hidden.
+const LMU_FIELDS = new Set<string>([
+  "IsRaceOn",
+  "CurrentEngineRpm",
+  "EngineMaxRpm",
+  "Speed",
+  "Gear",
+  "Accel",
+  "Brake",
+  "Clutch",
+  "Steer",
+  "Fuel",
+  "LapNumber",
+  "RacePosition",
+]);
+
+// Tabs hidden per game: LMU has no tire/suspension/motion/position telemetry,
+// and recordings are Forza-only (so Recording/Review do not apply).
+const HIDDEN_TABS: Partial<Record<Game, string[]>> = {
+  lmu: ["tires", "suspension", "motion", "position", "recording", "review"],
+};
+
+export function gameFromSource(source?: string): Game {
+  return source === "forza" || source === "lmu" ? source : "unknown";
+}
+
+// isFieldAvailable reports whether a telemetry field carries real data for the
+// given game. Forza (and the unknown/pre-telemetry state) render the full superset.
+export function isFieldAvailable(game: Game, field: string): boolean {
+  if (game === "lmu") return LMU_FIELDS.has(field);
+  return true;
+}
+
+export function isTabAvailable(game: Game, tab: string): boolean {
+  return !(HIDDEN_TABS[game] ?? []).includes(tab);
+}
+
+export function filterReadoutRows(group: string, game: Game): ReadoutRow[] {
+  const rows = readoutGroups[group] ?? [];
+  return rows.filter(([, field]) => isFieldAvailable(game, field));
+}
+
+// filterChart returns the chart definition with unavailable series removed, or
+// null when nothing remains so the caller can skip rendering the panel.
+export function filterChart(id: string, game: Game): ChartDefinition | null {
+  const def = chartDefinitions[id];
+  if (!def) return null;
+  const fields = def.fields.filter((f) => isFieldAvailable(game, f.field));
+  if (fields.length === 0) return null;
+  return { ...def, fields };
+}
+
 export function colorForField(field: ChartField): string {
   if (field.color) return field.color;
   if (semanticColors[field.field]) return semanticColors[field.field];

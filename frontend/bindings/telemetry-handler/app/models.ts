@@ -153,6 +153,13 @@ export class TelemetrySnapshot {
     "received_at": time$0.Time;
     "available": boolean;
 
+    /**
+     * Source identifies the game that produced the latest frame ("forza" or
+     * "lmu"), so the dashboard can tailor which tabs/readouts it shows. Empty
+     * until the first packet arrives.
+     */
+    "source": string;
+
     /** Creates a new TelemetrySnapshot instance. */
     constructor($$source: Partial<TelemetrySnapshot> = {}) {
         if (!("telemetry" in $$source)) {
@@ -163,6 +170,9 @@ export class TelemetrySnapshot {
         }
         if (!("available" in $$source)) {
             this["available"] = false;
+        }
+        if (!("source" in $$source)) {
+            this["source"] = "";
         }
 
         Object.assign(this, $$source);

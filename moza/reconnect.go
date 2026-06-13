@@ -17,12 +17,16 @@ const reopenBackoff = time.Second
 // the port recovers the lighting without restarting the app. Callers already
 // hold d.mu.
 func (d *Driver) writeMasksWithRetry(rpmMask, buttonMask uint16) error {
-	err := d.writeMasks(rpmMask, buttonMask)
-	if err == nil {
-		return nil
+	// d.conn is nil after a previous reopen failed (wheel unplugged). Skip the
+	// write — which would panic on the nil connection — and go straight to a
+	// reconnect attempt.
+	if d.conn != nil {
+		if err := d.writeMasks(rpmMask, buttonMask); err == nil {
+			return nil
+		}
 	}
 	if rerr := d.reopen(); rerr != nil {
-		return fmt.Errorf("%w (reconnect failed: %v)", err, rerr)
+		return fmt.Errorf("moza write failed (reconnect failed: %v)", rerr)
 	}
 	return d.writeMasks(rpmMask, buttonMask)
 }

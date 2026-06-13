@@ -34,14 +34,14 @@ import (
 	"time"
 )
 
-// Name of the rF2 Shared Memory Map Plugin's telemetry buffer.
-const telemetryMapName = `$rFactor2SMMP_Telemetry$`
+// Names of the rF2 Shared Memory Map Plugin's buffers.
+const (
+	telemetryMapName = `$rFactor2SMMP_Telemetry$`
+	scoringMapName   = `$rFactor2SMMP_Scoring$`
+)
 
-// readWindow is how many bytes we copy out of the mapped view each poll. The
-// real buffer is hundreds of KB (header + 128 vehicles); we only decode the
-// header and vehicle[0], whose last field we touch ends at offset 448, so a
-// few KB is plenty and safely within the mapping.
-const readWindow = 4096
+// maxVehicles is the rF2 shared-memory array capacity (mVehicles[128]).
+const maxVehicles = 128
 
 // Offsets into the telemetry buffer (little-endian). The rF2 headers are
 // #pragma pack(push, 4), so doubles are 4-byte aligned and there is NO padding
@@ -53,6 +53,35 @@ const (
 	offNumVehicles  = 12 // long (after mBytesUpdatedHint@8)
 	offVehicle0     = 16 // rF2VehicleTelemetry[0]
 )
+
+// tVehicleStride is sizeof(rF2VehicleTelemetry) under pack(4): the header,
+// inputs, status, damage and the trailing rF2Wheel mWheels[4] (4×260B) plus the
+// expansion padding. Used to step between vehicles when locating the player's
+// car. If this is slightly off the player simply won't be matched and we fall
+// back to vehicle[0], so it never reads garbage telemetry.
+const tVehicleStride = 1888
+
+// telemetryWindow spans the whole vehicle array so we can scan for the player.
+// snapshot() clamps to the real mapped size, so over-estimating is harmless.
+const telemetryWindow = offVehicle0 + maxVehicles*tVehicleStride
+
+// Offsets into the scoring buffer (little-endian, packed 4):
+//
+//	rF2Scoring { u32 begin; u32 end; long bytesHint; rF2ScoringInfo info; rF2VehicleScoring veh[128]; }
+//
+// rF2ScoringInfo is 548 bytes, so veh[0] starts at 12+548. We only need the
+// vehicle id and the player flag from each scoring entry.
+const (
+	sOffNumVehicles = 12 + 104 // info.mNumVehicles
+	sOffVehicle0    = 12 + 548 // veh[0]
+	sVehicleStride  = 584      // sizeof(rF2VehicleScoring)
+
+	svID       = 0   // long mID — matches rF2VehicleTelemetry.mID
+	svIsPlayer = 196 // bool mIsPlayer
+	svControl  = 197 // signed char mControl (0 = local player)
+)
+
+const scoringWindow = sOffVehicle0 + maxVehicles*sVehicleStride
 
 // Offsets within a rF2VehicleTelemetry, relative to the vehicle's start
 // (packed layout, verified against a live buffer hex dump).
@@ -114,9 +143,12 @@ func cstr(b []byte, off, max int) string {
 func main() {
 	addr := flag.String("addr", "127.0.0.1:20440", "UDP destination host:port")
 	hz := flag.Int("hz", 50, "poll/send rate in Hz (rF2 telemetry updates at ~50Hz)")
-	mapName := flag.String("map", telemetryMapName, "shared-memory object name")
+	mapName := flag.String("map", telemetryMapName, "telemetry shared-memory object name")
+	scoringMap := flag.String("scoring-map", scoringMapName, "scoring shared-memory object name (used to find the player's car)")
+	vehicle := flag.Int("vehicle", -1, "force a telemetry vehicle index (-1 = auto-detect the player via scoring)")
 	verbose := flag.Bool("v", false, "log every packet to stdout")
-	dump := flag.Int("dump", 0, "hex-dump the first N bytes of the buffer once (offset layout debug), then continue")
+	dump := flag.Int("dump", 0, "hex-dump the first N bytes of the telemetry buffer once (offset layout debug), then continue")
+	dumpScoring := flag.Int("dump-scoring", 0, "hex-dump the first N bytes of the scoring buffer once, then continue")
 	logfile := flag.String("logfile", "", "also write logs to this file (use a Windows path under Wine, e.g. Z:\\tmp\\lmu-bridge-inner.log)")
 	flag.Parse()
 
@@ -145,16 +177,23 @@ func main() {
 	defer ticker.Stop()
 
 	var (
-		m        *mapping
-		buf      = make([]byte, readWindow)
-		seq      uint64
-		dumped   bool
-		lastLog  time.Time
-		lastWarn time.Time
+		m            *mapping // telemetry buffer
+		ms           *mapping // scoring buffer (player detection)
+		buf          = make([]byte, telemetryWindow)
+		sbuf         = make([]byte, scoringWindow)
+		seq          uint64
+		dumped       bool
+		dumpedScore  bool
+		lastLog      time.Time
+		lastWarn     time.Time
+		lastScoreErr time.Time
 	)
 	defer func() {
 		if m != nil {
 			m.close()
+		}
+		if ms != nil {
+			ms.close()
 		}
 	}()
 
@@ -181,17 +220,58 @@ func main() {
 			log.Printf("opened shared memory %q", *mapName)
 		}
 
+		// Scoring is opened alongside telemetry; it carries the per-vehicle
+		// player flag we need to identify the local driver's car. It is optional:
+		// if it can't be opened we fall back to vehicle[0].
+		if ms == nil && *vehicle < 0 {
+			if mm, err := openMapping(*scoringMap); err == nil {
+				ms = mm
+				log.Printf("opened shared memory %q", *scoringMap)
+			} else if time.Since(lastScoreErr) > 5*time.Second {
+				log.Printf("scoring buffer unavailable, using vehicle[0]: %v", err)
+				lastScoreErr = time.Now()
+			}
+		}
+
 		if !readConsistent(m, buf) {
 			continue // writer mid-update across all retries; try next tick
 		}
 
 		if *dump > 0 && !dumped {
 			n := min(*dump, len(buf))
-			log.Printf("buffer hex dump (first %d bytes):\n%s", n, hex.Dump(buf[:n]))
+			log.Printf("telemetry hex dump (first %d bytes):\n%s", n, hex.Dump(buf[:n]))
 			dumped = true
 		}
+		if *dumpScoring > 0 && !dumpedScore && ms != nil && readConsistent(ms, sbuf) {
+			n := min(*dumpScoring, len(sbuf))
+			log.Printf("scoring hex dump (first %d bytes):\n%s", n, hex.Dump(sbuf[:n]))
+			dumpedScore = true
+		}
 
-		base := offVehicle0
+		// Pick the player's car. Manual override wins; otherwise read scoring to
+		// find the player's vehicle id and locate it in the telemetry array.
+		// Anything unexpected falls back to vehicle[0] (the legacy behaviour).
+		chosen := 0
+		playerID := int32(0)
+		switch {
+		case *vehicle >= 0:
+			if *vehicle < maxVehicles {
+				chosen = *vehicle
+			}
+		case ms != nil && readConsistent(ms, sbuf):
+			if pid, ok := findPlayerID(sbuf); ok {
+				playerID = pid
+				if idx, ok := findVehicleByID(buf, pid); ok {
+					chosen = idx
+				}
+			}
+		}
+		base := offVehicle0 + chosen*tVehicleStride
+		// Guard against a stride/index that would read past the snapshot.
+		if base+vEngineMaxRPM+8 > len(buf) {
+			base = offVehicle0
+			chosen = 0
+		}
 		vx, vy, vz := f64(buf, base+vLocalVel), f64(buf, base+vLocalVel+8), f64(buf, base+vLocalVel+16)
 
 		pkt := packet{
@@ -224,11 +304,52 @@ func main() {
 		}
 
 		if *verbose || time.Since(lastLog) > time.Second {
-			log.Printf("seq=%d veh=%d car=%q gear=%d rpm=%.0f speed=%.1fm/s thr=%.2f brk=%.2f",
-				pkt.Seq, pkt.NumVehicles, pkt.VehicleName, pkt.Gear, pkt.EngineRPM, pkt.SpeedMS, pkt.Throttle, pkt.Brake)
+			log.Printf("seq=%d veh=%d idx=%d pid=%d car=%q gear=%d rpm=%.0f speed=%.1fm/s thr=%.2f brk=%.2f",
+				pkt.Seq, pkt.NumVehicles, chosen, playerID, pkt.VehicleName, pkt.Gear, pkt.EngineRPM, pkt.SpeedMS, pkt.Throttle, pkt.Brake)
 			lastLog = time.Now()
 		}
 	}
+}
+
+// findPlayerID scans the scoring buffer for the local player's car and returns
+// its mID. The player is the scoring vehicle with mControl==0 (local control) or
+// mIsPlayer set. Returns false when scoring looks invalid or no player is found,
+// so the caller falls back to vehicle[0].
+func findPlayerID(buf []byte) (int32, bool) {
+	n := i32(buf, sOffNumVehicles)
+	if n < 1 || n > maxVehicles {
+		return 0, false
+	}
+	for i := 0; i < int(n); i++ {
+		base := sOffVehicle0 + i*sVehicleStride
+		if base+svControl >= len(buf) {
+			break
+		}
+		if int8(buf[base+svControl]) == 0 || buf[base+svIsPlayer] != 0 {
+			return i32(buf, base+svID), true
+		}
+	}
+	return 0, false
+}
+
+// findVehicleByID returns the index of the telemetry vehicle whose mID matches
+// id (the telemetry and scoring arrays are not necessarily in the same order, so
+// we match on the stable slot id rather than the index). Returns false if absent.
+func findVehicleByID(buf []byte, id int32) (int, bool) {
+	n := int(i32(buf, offNumVehicles))
+	if n < 1 || n > maxVehicles {
+		n = maxVehicles
+	}
+	for i := 0; i < n; i++ {
+		base := offVehicle0 + i*tVehicleStride
+		if base+4 > len(buf) {
+			break
+		}
+		if i32(buf, base+0) == id { // mID is the first field of rF2VehicleTelemetry
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // readConsistent snapshots the buffer and accepts it only when the SMMP version

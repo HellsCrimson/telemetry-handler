@@ -31,6 +31,11 @@ const (
 	// provides hysteresis so a brief stall does not flap the native window.
 	overlayShowWithin = 2 * time.Second
 	overlayHideAfter  = 5 * time.Second
+
+	// mozaReconnectEvery is how often the supervisor retries opening the MOZA
+	// wheel while it is enabled but not connected (e.g. powered on after the app
+	// started).
+	mozaReconnectEvery = 3 * time.Second
 )
 
 // Service is the Wails-bound surface of the application. Its exported methods
@@ -89,14 +94,16 @@ func (s *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	cfg := s.runtime.Config()
 
 	if cfg.Moza.Enabled {
+		// A missing/powered-off wheel is no longer fatal: ApplyMoza logs and the
+		// supervisor (below) keeps retrying so the app starts and connects later.
 		if err := s.runtime.ApplyMoza(cfg.Moza); err != nil {
-			return fmt.Errorf("moza: %w", err)
+			log.Printf("moza: %v", err)
 		}
-		log.Printf("moza enabled: port=%s update_hz=%.2f", cfg.Moza.Port, cfg.Moza.UpdateHz)
 	}
 
 	s.overlayDesired.Store(cfg.Overlay.Enabled)
 	go s.superviseOverlay(ctx)
+	go s.superviseMoza(ctx)
 
 	go s.runReceiver(ctx, cfg)
 	return nil
@@ -122,6 +129,22 @@ func (s *Service) superviseOverlay(ctx context.Context) {
 			return
 		case <-ticker.C:
 			s.reconcileOverlay(ctx)
+		}
+	}
+}
+
+// superviseMoza periodically retries connecting the MOZA wheel while it is
+// enabled but not connected, so the app can start with the wheel off and pick it
+// up once it is powered on.
+func (s *Service) superviseMoza(ctx context.Context) {
+	ticker := time.NewTicker(mozaReconnectEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.runtime.reconnectMoza()
 		}
 	}
 }
@@ -182,8 +205,10 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 
 	// apply pushes one telemetry frame to every consumer: the shared snapshot
 	// (overlay + dashboard), MOZA RPM lighting, and optional terminal output.
-	apply := func(t forza.Telemetry) error {
-		s.runtime.SetTelemetry(t)
+	// source identifies the game ("forza"/"lmu") so the dashboard can tailor
+	// which tabs and readouts it shows.
+	apply := func(t forza.Telemetry, source string) error {
+		s.runtime.SetTelemetry(t, source)
 		if s.runtime.MozaEnabled() {
 			currentRPM := t.CurrentEngineRpm
 			if t.IsRaceOn == 0 {
@@ -216,7 +241,7 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 				log.Printf("ignored malformed lmu packet: %v", err)
 				return nil
 			}
-			return apply(lmuToTelemetry(p))
+			return apply(lmuToTelemetry(p), "lmu")
 		}
 
 		telemetry, err := forza.ParseFH6Packet(packet)
@@ -235,7 +260,7 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 		if err := s.runtime.RecordPacket(packet, time.Now()); err != nil {
 			return err
 		}
-		return apply(telemetry)
+		return apply(telemetry, "forza")
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("receiver: %v", err)

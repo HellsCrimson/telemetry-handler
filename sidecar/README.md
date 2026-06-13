@@ -52,12 +52,21 @@ without it, once per second).
 
 ## Flags
 
-| flag    | default              | meaning                                  |
-|---------|----------------------|------------------------------------------|
-| `-addr` | `127.0.0.1:20440`    | UDP destination `host:port`              |
-| `-hz`   | `50`                 | poll/send rate (rF2 updates at ~50Hz)    |
-| `-map`  | `$rFactor2SMMP_Telemetry$` | shared-memory object name          |
-| `-v`    | off                  | log every packet                         |
+| flag            | default              | meaning                                          |
+|-----------------|----------------------|--------------------------------------------------|
+| `-addr`         | `127.0.0.1:20440`    | UDP destination `host:port`                      |
+| `-hz`           | `50`                 | poll/send rate (rF2 updates at ~50Hz)            |
+| `-map`          | `$rFactor2SMMP_Telemetry$` | telemetry shared-memory object name        |
+| `-scoring-map`  | `$rFactor2SMMP_Scoring$`   | scoring buffer (used to find the player)   |
+| `-vehicle`      | `-1`                 | force a telemetry vehicle index (`-1` = auto)    |
+| `-v`            | off                  | log every packet                                 |
+| `-dump`         | `0`                  | hex-dump N bytes of the telemetry buffer once    |
+| `-dump-scoring` | `0`                  | hex-dump N bytes of the scoring buffer once      |
+
+The per-packet log line includes `idx=` (the chosen telemetry vehicle index) and
+`pid=` (the player's slot id from scoring) so you can confirm it locked onto your
+car. If it ever picks the wrong car, force it with `-vehicle N`, or capture
+`-dump-scoring 4096` / `-dump 2048` and check the offset constants.
 
 ## Notes / next steps
 
@@ -67,9 +76,14 @@ without it, once per second).
   with `wsaioctl: winapi error #10045` (WSAEOPNOTSUPP). See `udp_windows.go`.
 - **Tear-free reads:** each poll snapshots the buffer and accepts it only when
   the SMMP `mVersionUpdateBegin == mVersionUpdateEnd` counters match.
-- **Player car:** the bridge currently reads `mVehicles[0]`. In multiplayer the
-  player is not always index 0 — selecting the right slot needs the *Scoring*
-  buffer (`mIsPlayer`/control flags), a follow-up once the smoke test passes.
+- **Player car:** the bridge reads the *Scoring* buffer (`$rFactor2SMMP_Scoring$`)
+  to find the local player's vehicle (`mControl==0`/`mIsPlayer`), takes its slot
+  `mID`, and locates the matching car in the *Telemetry* buffer by `mID` (the two
+  arrays are not guaranteed to be in the same order). With AI cars present the
+  player is often **not** index 0, which is why reading `mVehicles[0]` blindly
+  surfaced another car's inputs. Anything unexpected (scoring missing, no player
+  found, id not in telemetry, or a stride mismatch) falls back to `mVehicles[0]`,
+  so the worst case is the old behaviour, never garbage. Override with `-vehicle`.
 - **Wire format:** JSON on purpose (readable, trivial to parse/evolve). The main
   app gets one new parser branch; the UDP transport stays unchanged. Swap to a
   binary encoding later only if the rate ever justifies it.

@@ -2,13 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Service } from "../bindings/telemetry-handler/app";
 import {
   type HistorySample,
+  type Game,
+  type ChartDefinition,
   chartDefinitions,
-  readoutGroups,
   colorForField,
   formatValue,
   formatBytes,
   rgbToHex,
   hexToRgb,
+  gameFromSource,
+  isFieldAvailable,
+  isTabAvailable,
+  filterReadoutRows,
+  filterChart,
 } from "./telemetry";
 import Chart, { type Highlight } from "./Chart";
 import { TrackVisualizer } from "./TrackVisualizer";
@@ -16,7 +22,7 @@ import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
 
 const HISTORY_MS = 120000;
 
-type Snapshot = { telemetry: Record<string, any>; received_at: string; available: boolean };
+type Snapshot = { telemetry: Record<string, any>; received_at: string; available: boolean; source?: string };
 
 const TABS = [
   ["live", "Live"],
@@ -77,6 +83,12 @@ export default function App() {
   const [replayStatus, setReplayStatus] = useState("No replay loaded");
 
   const lastReceivedAtRef = useRef("");
+
+  // The active game is whichever source last sent telemetry; it drives which
+  // tabs and readouts are shown (LMU exposes much less data than Forza). Before
+  // any telemetry arrives the game is "unknown" and the full layout is shown.
+  const game: Game = gameFromSource(snapshot?.source);
+  const visibleTabs = useMemo(() => TABS.filter(([id]) => isTabAvailable(game, id)), [game]);
 
   const setStatus = useCallback((text: string, level: "normal" | "error" = "normal") => {
     setStatusText(text);
@@ -175,6 +187,12 @@ export default function App() {
   useEffect(() => {
     if (activeTab === "settings") refreshMonitor();
   }, [activeTab]);
+
+  // If the detected game hides the current tab (e.g. switching to LMU while on
+  // the Tires tab), fall back to the always-available Live tab.
+  useEffect(() => {
+    if (!isTabAvailable(game, activeTab)) setActiveTab("live");
+  }, [game, activeTab]);
 
   // --- Config form ---
   const patch = (mutator: (c: any) => void) =>
@@ -401,7 +419,7 @@ export default function App() {
       )}
 
       <nav className="tabs" aria-label="Dashboard sections">
-        {TABS.map(([id, label]) => (
+        {visibleTabs.map(([id, label]) => (
           <button key={id} className={`tab${activeTab === id ? " active" : ""}`} onClick={() => setActiveTab(id)}>
             {label}
           </button>
@@ -426,11 +444,18 @@ export default function App() {
                 <strong>{(t?.CurrentEngineRpm ?? 0).toFixed(0)}</strong>
                 <small>/ {(t?.EngineMaxRpm ?? 0).toFixed(0)}</small>
               </div>
-              <div className="metric">
-                <span>Race Position</span>
-                <strong>{t?.RacePosition ?? 0}</strong>
-                <small>lap {t?.LapNumber ?? 0}</small>
-              </div>
+              {isFieldAvailable(game, "RacePosition") ? (
+                <div className="metric">
+                  <span>Race Position</span>
+                  <strong>{t?.RacePosition ?? 0}</strong>
+                  <small>lap {t?.LapNumber ?? 0}</small>
+                </div>
+              ) : (
+                <div className="metric">
+                  <span>Lap</span>
+                  <strong>{t?.LapNumber ?? 0}</strong>
+                </div>
+              )}
               <div className="barblock">
                 <div className="rpmbar">
                   <div id="rpmFill" style={{ width: `${rpmRatio(t) * 100}%` }} />
@@ -449,24 +474,24 @@ export default function App() {
         )}
 
         {activeTab === "engine" && (
-          <ChartTab group="engineReadouts" telemetry={t} chartIds={["chartEngineMain", "chartEnginePower"]} history={history} />
+          <ChartTab group="engineReadouts" telemetry={t} chartIds={["chartEngineMain", "chartEnginePower"]} history={history} game={game} />
         )}
         {activeTab === "inputs" && (
-          <ChartTab group="inputReadouts" telemetry={t} chartIds={["chartInputsPedals", "chartInputsSteer"]} history={history} />
+          <ChartTab group="inputReadouts" telemetry={t} chartIds={["chartInputsPedals", "chartInputsSteer"]} history={history} game={game} />
         )}
         {activeTab === "tires" && (
-          <ChartTab group="tireReadouts" telemetry={t} chartIds={["chartTireTemp", "chartTireSlipRatio", "chartTireSlipAngle", "chartTireCombinedSlip"]} history={history} />
+          <ChartTab group="tireReadouts" telemetry={t} chartIds={["chartTireTemp", "chartTireSlipRatio", "chartTireSlipAngle", "chartTireCombinedSlip"]} history={history} game={game} />
         )}
         {activeTab === "suspension" && (
-          <ChartTab group="suspensionReadouts" telemetry={t} chartIds={["chartSuspensionNormalized", "chartSuspensionMeters"]} history={history} />
+          <ChartTab group="suspensionReadouts" telemetry={t} chartIds={["chartSuspensionNormalized", "chartSuspensionMeters"]} history={history} game={game} />
         )}
         {activeTab === "motion" && (
-          <ChartTab group="motionReadouts" telemetry={t} chartIds={["chartAcceleration", "chartVelocity", "chartAngularVelocity", "chartAttitude"]} history={history} />
+          <ChartTab group="motionReadouts" telemetry={t} chartIds={["chartAcceleration", "chartVelocity", "chartAngularVelocity", "chartAttitude"]} history={history} game={game} />
         )}
 
         {activeTab === "position" && (
           <section className="tabpage active">
-            <ReadoutGroup group="positionReadouts" telemetry={t} />
+            <ReadoutGroup group="positionReadouts" telemetry={t} game={game} />
             <TrackPanel history={trackHistory} currentIndex={trackIndex} onClear={() => setHistory([])} />
             <div className="charts">
               <Chart definition={chartDefinitions.chartLapTiming} history={history} />
@@ -690,8 +715,8 @@ function rpmRatio(t?: Record<string, any>): number {
   return Math.min(1, Math.max(0, t.CurrentEngineRpm / t.EngineMaxRpm));
 }
 
-function ReadoutGroup({ group, telemetry }: { group: string; telemetry?: Record<string, any> }) {
-  const rows = readoutGroups[group];
+function ReadoutGroup({ group, telemetry, game = "unknown" }: { group: string; telemetry?: Record<string, any>; game?: Game }) {
+  const rows = filterReadoutRows(group, game);
   return (
     <div className="readouts">
       {rows.map(([label, field, digits, transform, suffix], i) => {
@@ -707,13 +732,17 @@ function ReadoutGroup({ group, telemetry }: { group: string; telemetry?: Record<
   );
 }
 
-function ChartTab({ group, telemetry, chartIds, history }: { group: string; telemetry?: Record<string, any>; chartIds: string[]; history: HistorySample[] }) {
+function ChartTab({ group, telemetry, chartIds, history, game }: { group: string; telemetry?: Record<string, any>; chartIds: string[]; history: HistorySample[]; game: Game }) {
+  // Drop series the active game does not provide, and skip charts left empty.
+  const charts = chartIds
+    .map((id) => ({ id, definition: filterChart(id, game) }))
+    .filter((c): c is { id: string; definition: ChartDefinition } => c.definition !== null);
   return (
     <section className="tabpage active">
-      <ReadoutGroup group={group} telemetry={telemetry} />
+      <ReadoutGroup group={group} telemetry={telemetry} game={game} />
       <div className="charts">
-        {chartIds.map((id) => (
-          <Chart key={id} definition={chartDefinitions[id]} history={history} />
+        {charts.map(({ id, definition }) => (
+          <Chart key={id} definition={definition} history={history} />
         ))}
       </div>
     </section>

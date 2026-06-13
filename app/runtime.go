@@ -19,6 +19,10 @@ type TelemetrySnapshot struct {
 	Telemetry  forza.Telemetry `json:"telemetry"`
 	ReceivedAt time.Time       `json:"received_at"`
 	Available  bool            `json:"available"`
+	// Source identifies the game that produced the latest frame ("forza" or
+	// "lmu"), so the dashboard can tailor which tabs/readouts it shows. Empty
+	// until the first packet arrives.
+	Source string `json:"source"`
 }
 
 // ReplaySample is a single telemetry frame from a recording, offset from the
@@ -39,8 +43,13 @@ type Runtime struct {
 	telemetry forza.Telemetry
 	seen      bool
 	seenAt    time.Time
+	source    string
 	moza      *moza.Driver
 	recorder  *recording.Manager
+
+	// mozaWarned dedupes the "waiting for wheel" log so the reconnect
+	// supervisor does not spam it every tick while the wheel is absent.
+	mozaWarned bool
 
 	// loadErrPath/loadErr record a config-file load failure so the dashboard can
 	// surface that the app fell back to default settings.
@@ -82,15 +91,19 @@ func (r *Runtime) LatestTelemetry() TelemetrySnapshot {
 		Telemetry:  r.telemetry,
 		ReceivedAt: r.seenAt,
 		Available:  r.seen,
+		Source:     r.source,
 	}
 }
 
-func (r *Runtime) SetTelemetry(telemetry forza.Telemetry) {
+// SetTelemetry records the latest frame and the game it came from (source is
+// "forza" or "lmu"), used by the dashboard to tailor its layout per game.
+func (r *Runtime) SetTelemetry(telemetry forza.Telemetry, source string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.telemetry = telemetry
 	r.seen = true
 	r.seenAt = time.Now()
+	r.source = source
 }
 
 func (r *Runtime) PrintEvery() time.Duration {
@@ -280,10 +293,18 @@ func (r *Runtime) applyMoza(next config.Moza, staged *config.Config) error {
 	}
 
 	options := mozaOptionsFromConfig(next)
-	currentPort := r.cfg.Moza.Port
-	if r.moza != nil && currentPort == next.Port {
-		return r.moza.Apply(options)
+	// Reconfigure an existing driver on the same port in place.
+	if r.moza != nil && r.cfg.Moza.Port == next.Port {
+		if err := r.moza.Apply(options); err != nil {
+			// The device write failed (likely unplugged). Drop the driver; the
+			// reconnect supervisor will reopen it when the wheel returns.
+			log.Printf("moza: apply failed, will reconnect when the wheel is available: %v", err)
+			_ = r.moza.Close()
+			r.moza = nil
+		}
+		return nil
 	}
+	// New driver or a port change: (re)open the device.
 	if r.moza != nil {
 		if err := r.moza.Close(); err != nil {
 			return err
@@ -292,10 +313,42 @@ func (r *Runtime) applyMoza(next config.Moza, staged *config.Config) error {
 	}
 	driver, err := moza.NewDriver(options)
 	if err != nil {
-		return err
+		// The wheel is off or not connected yet. This is not fatal: keep the
+		// app running and let the reconnect supervisor retry. Returning nil also
+		// means a config Apply with MOZA enabled but the wheel off still applies
+		// the rest of the configuration.
+		log.Printf("moza: not connected, will retry when the wheel is available: %v", err)
+		r.mozaWarned = true
+		return nil
 	}
+	r.mozaWarned = false
 	r.moza = driver
 	return nil
+}
+
+// reconnectMoza is called periodically by the MOZA supervisor. When MOZA is
+// enabled in config but no driver is currently connected, it tries to (re)open
+// the device. This is what lets the app start with the wheel off — or recover
+// from the wheel being unplugged before any telemetry arrived — and connect
+// automatically once the wheel is powered on. A connected driver heals transient
+// USB errors on its own (see moza/reconnect.go), so this is a no-op then.
+func (r *Runtime) reconnectMoza() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.cfg.Moza.Enabled || r.moza != nil {
+		return
+	}
+	driver, err := moza.NewDriver(mozaOptionsFromConfig(r.cfg.Moza))
+	if err != nil {
+		if !r.mozaWarned {
+			log.Printf("moza: waiting for wheel on %s: %v", r.cfg.Moza.Port, err)
+			r.mozaWarned = true
+		}
+		return
+	}
+	log.Printf("moza: connected on %s", r.cfg.Moza.Port)
+	r.mozaWarned = false
+	r.moza = driver
 }
 
 func mozaOptionsFromConfig(cfg config.Moza) moza.Options {
