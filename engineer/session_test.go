@@ -182,6 +182,138 @@ func TestEngineerObserveSnapshot(t *testing.T) {
 	}
 }
 
+func TestMiniSectorIndex(t *testing.T) {
+	cases := []struct {
+		frac float64
+		want int
+	}{
+		{0, 0},
+		{0.0499, 0},
+		{0.05, 1},
+		{0.5, numMiniSectors / 2},
+		{0.999, numMiniSectors - 1},
+		{1.0, numMiniSectors - 1}, // clamped
+		{1.5, numMiniSectors - 1}, // clamped
+		{-0.2, 0},                 // clamped
+	}
+	for _, c := range cases {
+		if got := miniSectorIndex(c.frac); got != c.want {
+			t.Errorf("miniSectorIndex(%v) = %d, want %d", c.frac, got, c.want)
+		}
+	}
+}
+
+func TestLapAccumulatorAccumulates(t *testing.T) {
+	var a lapAccumulator
+	// Drive one full lap across all mini-sectors, burning fuel and wearing tires
+	// linearly, then cross the line (lap 2) to finalize lap 1. Each step advances
+	// the lap fraction by one mini-sector.
+	fuel := 100.0
+	wear := 1.0 // 1.0 = fresh
+	et := 0.0
+	for step := 0; step <= numMiniSectors; step++ {
+		frac := float64(step) / numMiniSectors
+		lap := int32(1)
+		if step == numMiniSectors {
+			frac = 0 // crossed the line
+			lap = 2
+		}
+		a.update(sample{lap: lap, frac: frac, wear: [4]float64{wear, wear, wear, wear}, fuel: fuel, et: et, speed: 50})
+		fuel -= 1.0 // 1L per mini-sector
+		wear -= 0.01
+		et += 2.0
+	}
+
+	last := a.lastLap()
+	if last == nil {
+		t.Fatal("expected a completed lap")
+	}
+	if len(last) != numMiniSectors {
+		t.Fatalf("len(last) = %d, want %d", len(last), numMiniSectors)
+	}
+	// Each closed mini-sector burned ~1L and ~0.01 wear per wheel.
+	var totalFuel float64
+	for _, m := range last {
+		totalFuel += m.FuelUsed
+	}
+	if totalFuel < numMiniSectors-2 || totalFuel > numMiniSectors+2 {
+		t.Errorf("total fuel over lap = %v, want ~%d", totalFuel, numMiniSectors)
+	}
+	// A representative mini-sector should show positive wear consumption.
+	if last[5].TireWear[0] <= 0 {
+		t.Errorf("mini-sector 5 FL wear = %v, want > 0", last[5].TireWear[0])
+	}
+	if last[5].TimeSpent <= 0 {
+		t.Errorf("mini-sector 5 time = %v, want > 0", last[5].TimeSpent)
+	}
+}
+
+func TestEventDetectorFlagsAndPits(t *testing.T) {
+	e := New()
+	// Baseline frame: green, no one pitting.
+	f := buildFrame()
+	f.Rules.SafetyCarExists = 0 // start with no SC so the first frame is green
+	e.Observe(f)
+	if len(e.Snapshot().Events) != 0 {
+		t.Fatalf("baseline frame should emit no events, got %v", e.Snapshot().Events)
+	}
+
+	// Next frame: safety car deployed + the AI car enters the pits.
+	f2 := buildFrame()
+	f2.Rules.SafetyCarExists = 1
+	f2.Rules.SafetyCarActive = 1
+	f2.Vehicles[1].Scoring.PitState = 2 // entering
+	f2.ScoringInfo.CurrentET = 610
+	e.Observe(f2)
+
+	events := e.Snapshot().Events
+	if len(events) < 2 {
+		t.Fatalf("expected SC + pit events, got %d: %+v", len(events), events)
+	}
+	var sawSC, sawPit bool
+	for _, ev := range events {
+		if ev.Kind == "flag" && ev.Message == "Safety car deployed" {
+			sawSC = true
+		}
+		if ev.Kind == "pit" {
+			sawPit = true
+		}
+	}
+	if !sawSC || !sawPit {
+		t.Errorf("missing events: sc=%v pit=%v (%+v)", sawSC, sawPit, events)
+	}
+}
+
+func TestDownsample(t *testing.T) {
+	var path []Vec2
+	for i := range 1000 {
+		path = append(path, Vec2{X: float64(i), Z: 0})
+	}
+	out := downsample(path, 240)
+	if len(out) != 240 {
+		t.Errorf("len = %d, want 240", len(out))
+	}
+	if out[0].X != 0 {
+		t.Errorf("first point X = %v, want 0", out[0].X)
+	}
+	// A short path is returned unchanged.
+	short := []Vec2{{X: 1}, {X: 2}}
+	if got := downsample(short, 240); len(got) != 2 {
+		t.Errorf("short path len = %d, want 2", len(got))
+	}
+}
+
+func TestLapAccumulatorNoLapYet(t *testing.T) {
+	var a lapAccumulator
+	a.update(sample{lap: 1, frac: 0.1, fuel: 50, speed: 40})
+	if a.lastLap() != nil {
+		t.Error("no completed lap should be available after one sample")
+	}
+	if a.lapInProgress() == nil {
+		t.Error("in-progress lap should exist after the first sample")
+	}
+}
+
 // kToC unavailable readings stay 0 rather than going to -273.
 func TestKToCZero(t *testing.T) {
 	if got := kToC(0); got != 0 {

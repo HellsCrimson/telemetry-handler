@@ -4,7 +4,11 @@
 export {
     CarState,
     FlagState,
+    MiniSectorState,
+    PlayerDetail,
+    RaceEvent,
     SessionState,
     TireState,
+    Vec2,
     WeatherState
 } from "./models.js";

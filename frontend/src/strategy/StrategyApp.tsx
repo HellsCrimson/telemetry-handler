@@ -13,7 +13,13 @@ import "./strategy.css";
 import { type SessionState } from "./model";
 import RacePopups from "./components/RacePopups";
 import TrackCircle from "./components/TrackCircle";
+import WeatherPanel from "./components/WeatherPanel";
+import PitParameters from "./components/PitParameters";
+import EventTimeline from "./components/EventTimeline";
 import LiveData from "./tabs/LiveData";
+import DriverCoaching from "./tabs/DriverCoaching";
+import CarManagement from "./tabs/CarManagement";
+import DriverVs from "./tabs/DriverVs";
 
 // The five main strategy tabs from LMU_PLAN.md plus Settings. Phase 1 implements
 // Live Data and Strategy Calls (the Track Circle lives there); the rest are
@@ -79,14 +85,24 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
         {!available && <p className="muted">No live session. Start Le Mans Ultimate (with the lmu-bridge sidecar) or replay an LMU recording.</p>}
 
         {available && state && activeTab === "live" && <LiveData state={state} />}
-        {available && state && activeTab === "strategy" && <TrackCircle state={state} />}
-
-        {available && ["vs", "coaching", "car"].includes(activeTab) && (
-          <p className="muted">This tab is coming in a later phase.</p>
+        {available && state && activeTab === "strategy" && (
+          <>
+            <TrackCircle state={state} />
+            <div className="strat-livedata">
+              <PitParameters state={state} />
+              <WeatherPanel weather={state.weather} />
+            </div>
+          </>
         )}
+        {available && state && activeTab === "coaching" && <DriverCoaching state={state} />}
+        {available && state && activeTab === "car" && <CarManagement state={state} />}
+        {available && state && activeTab === "vs" && <DriverVs state={state} />}
+
         {activeTab === "settings" && (
           <p className="muted">Strategy settings will live here. For now, use the Dashboard’s Settings tab.</p>
         )}
+
+        {available && state && <EventTimeline events={state.events} />}
       </main>
     </div>
   );

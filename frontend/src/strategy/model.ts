@@ -9,6 +9,9 @@ import type {
   TireState as GoTireState,
   FlagState as GoFlagState,
   WeatherState as GoWeatherState,
+  MiniSectorState as GoMiniSectorState,
+  RaceEvent as GoRaceEvent,
+  Vec2 as GoVec2,
 } from "../../bindings/telemetry-handler/engineer";
 
 export type SessionState = GoSessionState;
@@ -16,6 +19,9 @@ export type CarState = GoCarState;
 export type TireState = GoTireState;
 export type FlagState = GoFlagState;
 export type WeatherState = GoWeatherState;
+export type MiniSectorState = GoMiniSectorState;
+export type RaceEvent = GoRaceEvent;
+export type Vec2 = GoVec2;
 
 // pitLossSeconds is the time a full pit stop costs relative to staying out (pit
 // lane delta + service). It's a single tunable used by the pit-window estimate;
@@ -81,4 +87,31 @@ export function byRaceOrder(state: SessionState | null): CarState[] {
 // avgTemp averages a tire's three (left/center/right) temperature readings.
 export function avgTemp(t: TireState): number {
   return (t.temp[0] + t.temp[1] + t.temp[2]) / 3;
+}
+
+// formatClock renders a session elapsed time (seconds) as m:ss for the timeline.
+export function formatClock(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+// lapTotal sums one resource field across a lap's mini-sectors.
+export function lapTotal(sectors: MiniSectorState[] | undefined, pick: (m: MiniSectorState) => number): number {
+  if (!sectors) return 0;
+  return sectors.reduce((a, m) => a + pick(m), 0);
+}
+
+// lapsRemaining estimates how many racing laps are left. For a lap-limited race
+// it's max_laps - laps done; for a timed race it's time left / last lap. Returns
+// 0 when it can't be estimated.
+export function lapsRemaining(state: SessionState, car: CarState): number {
+  if (state.max_laps > 0) {
+    return Math.max(0, state.max_laps - car.total_laps);
+  }
+  if (state.session_end_time > 0 && car.last_lap > 0) {
+    const timeLeft = state.session_end_time - state.session_time;
+    return Math.max(0, Math.ceil(timeLeft / car.last_lap));
+  }
+  return 0;
 }

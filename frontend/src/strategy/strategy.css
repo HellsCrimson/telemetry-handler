@@ -152,6 +152,172 @@
   color: var(--muted);
 }
 
+/* Mini-sector bar charts (coaching) */
+.strat-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 160px;
+}
+.strat-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 4px;
+}
+.strat-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: var(--panel2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.strat-bar-fill {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  min-height: 1px;
+}
+.strat-bar-idx {
+  font-size: 10px;
+  color: var(--muted);
+}
+.strat-bar-sub {
+  font-size: 10px;
+  color: var(--text);
+}
+.strat-axis-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.strat-coaching {
+  display: grid;
+  gap: 16px;
+}
+
+/* Damage panels */
+.strat-dents {
+  display: flex;
+  gap: 6px;
+}
+.strat-dent {
+  width: 28px;
+  height: 20px;
+  border-radius: 3px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+}
+.strat-dent-1 {
+  background: var(--yellow);
+}
+.strat-dent-2 {
+  background: var(--red);
+}
+
+/* Weather rain grid */
+.strat-weather {
+  margin-top: 16px;
+}
+.strat-raingrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  max-width: 160px;
+  margin-top: 12px;
+}
+.strat-raincell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+
+/* Event timeline */
+.strat-timeline {
+  margin-top: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.strat-timeline h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.strat-timeline ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+.strat-event {
+  display: flex;
+  gap: 12px;
+  padding: 3px 0;
+  border-left: 3px solid var(--line);
+  padding-left: 10px;
+}
+.strat-event-time {
+  color: var(--muted);
+  min-width: 48px;
+}
+.strat-event-flag {
+  border-left-color: var(--yellow);
+}
+.strat-event-pit {
+  border-left-color: var(--blue);
+}
+.strat-event-contact {
+  border-left-color: var(--red);
+}
+
+/* Driver Vs. */
+.strat-vs {
+  display: grid;
+  gap: 16px;
+}
+.strat-vs-pick select {
+  margin-left: 8px;
+}
+.strat-vs-pace {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+.strat-vs-col h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.strat-vs-label {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Driven line */
+.strat-driveline {
+  width: 100%;
+  max-width: 540px;
+  height: auto;
+  background: var(--panel2);
+  border-radius: 6px;
+}
+.strat-driveline-path {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
 @media (max-width: 900px) {
   .strat-circle {
     grid-template-columns: 1fr;

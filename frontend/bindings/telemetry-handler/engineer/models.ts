@@ -122,6 +122,22 @@ export class CarState {
      */
     "is_player": boolean;
 
+    /**
+     * MiniSectors / LapInProgress are the per-corner accumulation from the live
+     * engine (engineer/lapaccum.go). MiniSectors (the last COMPLETED lap) is
+     * filled for EVERY car so Driver Vs. can compare any rival; LapInProgress (the
+     * lap currently being driven) is the player car only. Both are nil until the
+     * relevant lap exists.
+     */
+    "mini_sectors": MiniSectorState[];
+    "lap_in_progress": MiniSectorState[];
+
+    /**
+     * LapPath is the driven line (world X/Z) of the last completed lap, for the
+     * Drive Line view. Player car only (it's heavy); nil otherwise.
+     */
+    "lap_path": Vec2[];
+
     /** Creates a new CarState instance. */
     constructor($$source: Partial<CarState> = {}) {
         if (!("id" in $$source)) {
@@ -190,6 +206,15 @@ export class CarState {
         if (!("is_player" in $$source)) {
             this["is_player"] = false;
         }
+        if (!("mini_sectors" in $$source)) {
+            this["mini_sectors"] = [];
+        }
+        if (!("lap_in_progress" in $$source)) {
+            this["lap_in_progress"] = [];
+        }
+        if (!("lap_path" in $$source)) {
+            this["lap_path"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -199,9 +224,21 @@ export class CarState {
      */
     static createFrom($$source: any = {}): CarState {
         const $$createField20_0 = $$createType1;
+        const $$createField22_0 = $$createType3;
+        const $$createField23_0 = $$createType3;
+        const $$createField24_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tires" in $$parsedSource) {
             $$parsedSource["tires"] = $$createField20_0($$parsedSource["tires"]);
+        }
+        if ("mini_sectors" in $$parsedSource) {
+            $$parsedSource["mini_sectors"] = $$createField22_0($$parsedSource["mini_sectors"]);
+        }
+        if ("lap_in_progress" in $$parsedSource) {
+            $$parsedSource["lap_in_progress"] = $$createField23_0($$parsedSource["lap_in_progress"]);
+        }
+        if ("lap_path" in $$parsedSource) {
+            $$parsedSource["lap_path"] = $$createField24_0($$parsedSource["lap_path"]);
         }
         return new CarState($$parsedSource as Partial<CarState>);
     }
@@ -260,6 +297,308 @@ export class FlagState {
 }
 
 /**
+ * MiniSectorState is the resource usage accumulated across one mini-sector (one
+ * of numMiniSectors equal slices of the lap). It is what lets the engineer say
+ * "you used too much tire braking into this corner". All deltas are over the
+ * mini-sector only.
+ */
+export class MiniSectorState {
+    /**
+     * 0..numMiniSectors-1
+     */
+    "index": number;
+
+    /**
+     * wear consumed per wheel (entry-exit; see lapaccum.go)
+     */
+    "tire_wear": number[];
+
+    /**
+     * liters burned
+     */
+    "fuel_used": number;
+
+    /**
+     * hybrid charge delta (+ depleted, - regen)
+     */
+    "battery_used": number;
+
+    /**
+     * seconds spent in the mini-sector
+     */
+    "time_spent": number;
+
+    /**
+     * m/s at entry
+     */
+    "entry_speed": number;
+
+    /**
+     * m/s at exit
+     */
+    "exit_speed": number;
+
+    /**
+     * slowest m/s within the mini-sector
+     */
+    "min_speed": number;
+
+    /** Creates a new MiniSectorState instance. */
+    constructor($$source: Partial<MiniSectorState> = {}) {
+        if (!("index" in $$source)) {
+            this["index"] = 0;
+        }
+        if (!("tire_wear" in $$source)) {
+            this["tire_wear"] = Array.from({ length: 4 }, () => 0);
+        }
+        if (!("fuel_used" in $$source)) {
+            this["fuel_used"] = 0;
+        }
+        if (!("battery_used" in $$source)) {
+            this["battery_used"] = 0;
+        }
+        if (!("time_spent" in $$source)) {
+            this["time_spent"] = 0;
+        }
+        if (!("entry_speed" in $$source)) {
+            this["entry_speed"] = 0;
+        }
+        if (!("exit_speed" in $$source)) {
+            this["exit_speed"] = 0;
+        }
+        if (!("min_speed" in $$source)) {
+            this["min_speed"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MiniSectorState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MiniSectorState {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MiniSectorState($$parsedSource as Partial<MiniSectorState>);
+    }
+}
+
+/**
+ * PlayerDetail is the instantaneous "Car Management" view of the player's car:
+ * powertrain, energy, aero, suspension, driver aids and damage. It is player-only
+ * (the data is heavy and only the engineered car needs it) and needs no history,
+ * so it is mapped straight from the current frame. Present is false until a
+ * player car is identified.
+ */
+export class PlayerDetail {
+    "present": boolean;
+
+    /**
+     * powertrain / temps
+     */
+    "rpm": number;
+    "max_rpm": number;
+
+    /**
+     * Celsius
+     */
+    "water_temp": number;
+
+    /**
+     * Celsius
+     */
+    "oil_temp": number;
+
+    /**
+     * hybrid / electric
+     * 0=unavail,1=inactive,2=propulsion,3=regen
+     */
+    "electric_state": number;
+
+    /**
+     * motor temp, Celsius
+     */
+    "electric_temp": number;
+
+    /**
+     * aero / suspension
+     * Newtons
+     */
+    "front_downforce": number;
+
+    /**
+     * Newtons
+     */
+    "rear_downforce": number;
+
+    /**
+     * Newtons
+     */
+    "drag": number;
+    "front_ride_height": number;
+    "rear_ride_height": number;
+
+    /**
+     * 0..1 toward the rear
+     */
+    "rear_brake_bias": number;
+
+    /**
+     * driver aids (session-wide settings)
+     * 0=off..3
+     */
+    "traction_control": number;
+
+    /**
+     * 0=off..2
+     */
+    "abs": number;
+
+    /**
+     * 0=off..2
+     */
+    "stability_control": number;
+
+    /**
+     * m/s
+     */
+    "pit_speed_limit": number;
+
+    /**
+     * damage: per-panel dent severity (0=none,1=minor,2=major)
+     */
+    "dent_severity": number[];
+
+    /**
+     * max of DentSeverity, for a quick at-a-glance level
+     */
+    "worst_dent": number;
+
+    /** Creates a new PlayerDetail instance. */
+    constructor($$source: Partial<PlayerDetail> = {}) {
+        if (!("present" in $$source)) {
+            this["present"] = false;
+        }
+        if (!("rpm" in $$source)) {
+            this["rpm"] = 0;
+        }
+        if (!("max_rpm" in $$source)) {
+            this["max_rpm"] = 0;
+        }
+        if (!("water_temp" in $$source)) {
+            this["water_temp"] = 0;
+        }
+        if (!("oil_temp" in $$source)) {
+            this["oil_temp"] = 0;
+        }
+        if (!("electric_state" in $$source)) {
+            this["electric_state"] = 0;
+        }
+        if (!("electric_temp" in $$source)) {
+            this["electric_temp"] = 0;
+        }
+        if (!("front_downforce" in $$source)) {
+            this["front_downforce"] = 0;
+        }
+        if (!("rear_downforce" in $$source)) {
+            this["rear_downforce"] = 0;
+        }
+        if (!("drag" in $$source)) {
+            this["drag"] = 0;
+        }
+        if (!("front_ride_height" in $$source)) {
+            this["front_ride_height"] = 0;
+        }
+        if (!("rear_ride_height" in $$source)) {
+            this["rear_ride_height"] = 0;
+        }
+        if (!("rear_brake_bias" in $$source)) {
+            this["rear_brake_bias"] = 0;
+        }
+        if (!("traction_control" in $$source)) {
+            this["traction_control"] = 0;
+        }
+        if (!("abs" in $$source)) {
+            this["abs"] = 0;
+        }
+        if (!("stability_control" in $$source)) {
+            this["stability_control"] = 0;
+        }
+        if (!("pit_speed_limit" in $$source)) {
+            this["pit_speed_limit"] = 0;
+        }
+        if (!("dent_severity" in $$source)) {
+            this["dent_severity"] = Array.from({ length: 8 }, () => 0);
+        }
+        if (!("worst_dent" in $$source)) {
+            this["worst_dent"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PlayerDetail instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PlayerDetail {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PlayerDetail($$parsedSource as Partial<PlayerDetail>);
+    }
+}
+
+/**
+ * RaceEvent is one entry in the race timeline / popup feed: a flag change, a
+ * competitor pit entry, or a notable contact. Generated by the engine from frame-
+ * to-frame state transitions (engineer/events.go).
+ */
+export class RaceEvent {
+    /**
+     * session time the event happened (s)
+     */
+    "at_et": number;
+
+    /**
+     * "flag" | "pit" | "contact"
+     */
+    "kind": string;
+
+    /**
+     * car involved (-1 for session-wide)
+     */
+    "car_id": number;
+
+    /**
+     * human-readable, ready to display
+     */
+    "message": string;
+
+    /** Creates a new RaceEvent instance. */
+    constructor($$source: Partial<RaceEvent> = {}) {
+        if (!("at_et" in $$source)) {
+            this["at_et"] = 0;
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("car_id" in $$source)) {
+            this["car_id"] = 0;
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RaceEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RaceEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RaceEvent($$parsedSource as Partial<RaceEvent>);
+    }
+}
+
+/**
  * SessionState is the complete, game-agnostic snapshot the strategy UI renders.
  * One of these is produced per observed frame. Available is false before any
  * frame has arrived (or for Forza, which produces no multi-car frame).
@@ -310,6 +649,16 @@ export class SessionState {
     "weather": WeatherState;
     "cars": CarState[];
 
+    /**
+     * car-management detail for the player car only
+     */
+    "player": PlayerDetail;
+
+    /**
+     * most-recent-last race timeline (bounded)
+     */
+    "events": RaceEvent[];
+
     /** Creates a new SessionState instance. */
     constructor($$source: Partial<SessionState> = {}) {
         if (!("available" in $$source)) {
@@ -348,6 +697,12 @@ export class SessionState {
         if (!("cars" in $$source)) {
             this["cars"] = [];
         }
+        if (!("player" in $$source)) {
+            this["player"] = (new PlayerDetail());
+        }
+        if (!("events" in $$source)) {
+            this["events"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -356,9 +711,11 @@ export class SessionState {
      * Creates a new SessionState instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionState {
-        const $$createField9_0 = $$createType2;
-        const $$createField10_0 = $$createType3;
-        const $$createField11_0 = $$createType5;
+        const $$createField9_0 = $$createType6;
+        const $$createField10_0 = $$createType7;
+        const $$createField11_0 = $$createType9;
+        const $$createField12_0 = $$createType10;
+        const $$createField13_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("flags" in $$parsedSource) {
             $$parsedSource["flags"] = $$createField9_0($$parsedSource["flags"]);
@@ -368,6 +725,12 @@ export class SessionState {
         }
         if ("cars" in $$parsedSource) {
             $$parsedSource["cars"] = $$createField11_0($$parsedSource["cars"]);
+        }
+        if ("player" in $$parsedSource) {
+            $$parsedSource["player"] = $$createField12_0($$parsedSource["player"]);
+        }
+        if ("events" in $$parsedSource) {
+            $$parsedSource["events"] = $$createField13_0($$parsedSource["events"]);
         }
         return new SessionState($$parsedSource as Partial<SessionState>);
     }
@@ -430,6 +793,35 @@ export class TireState {
     static createFrom($$source: any = {}): TireState {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new TireState($$parsedSource as Partial<TireState>);
+    }
+}
+
+/**
+ * Vec2 is a world-plane point (X east/west, Z north/south) used for the driven
+ * line. Y (height) is dropped — the line is drawn top-down.
+ */
+export class Vec2 {
+    "x": number;
+    "z": number;
+
+    /** Creates a new Vec2 instance. */
+    constructor($$source: Partial<Vec2> = {}) {
+        if (!("x" in $$source)) {
+            this["x"] = 0;
+        }
+        if (!("z" in $$source)) {
+            this["z"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Vec2 instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Vec2 {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Vec2($$parsedSource as Partial<Vec2>);
     }
 }
 
@@ -503,7 +895,14 @@ export class WeatherState {
 // Private type creation functions
 const $$createType0 = TireState.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = FlagState.createFrom;
-const $$createType3 = WeatherState.createFrom;
-const $$createType4 = CarState.createFrom;
+const $$createType2 = MiniSectorState.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = Vec2.createFrom;
 const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = FlagState.createFrom;
+const $$createType7 = WeatherState.createFrom;
+const $$createType8 = CarState.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = PlayerDetail.createFrom;
+const $$createType11 = RaceEvent.createFrom;
+const $$createType12 = $Create.Array($$createType11);
