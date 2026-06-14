@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"encoding/json"
+
 	"telemetry-handler/analysis"
 	"telemetry-handler/config"
 	"telemetry-handler/engineer"
@@ -13,6 +15,7 @@ import (
 	"telemetry-handler/lmu/wire"
 	"telemetry-handler/moza"
 	"telemetry-handler/recording"
+	"telemetry-handler/store"
 )
 
 // TelemetryMeta carries descriptive session info that does not fit the binary
@@ -70,6 +73,7 @@ type Runtime struct {
 	meta      TelemetryMeta
 	frame     *wire.Frame        // full LMU frame (all cars + globals); nil for Forza
 	engineer  *engineer.Engineer // live strategy engine (multi-car SessionState)
+	store     *store.Store       // local persistence (reference laps, corners, sessions, recordings); nil if unavailable
 	moza      *moza.Driver
 	recorder  *recording.Manager
 
@@ -83,8 +87,8 @@ type Runtime struct {
 	loadErr     string
 }
 
-func NewRuntime(cfg config.Config, cfgPath string, recorder *recording.Manager) *Runtime {
-	return &Runtime{cfg: cfg, cfgPath: cfgPath, recorder: recorder, engineer: engineer.New()}
+func NewRuntime(cfg config.Config, cfgPath string, recorder *recording.Manager, st *store.Store) *Runtime {
+	return &Runtime{cfg: cfg, cfgPath: cfgPath, recorder: recorder, store: st, engineer: engineer.New()}
 }
 
 // SetLoadError records that the config file at path failed to load (msg is the
@@ -171,6 +175,137 @@ func (r *Runtime) EngineerState() engineer.SessionState {
 // Driver Vs. line overlay. Passes through to the engine (own lock).
 func (r *Runtime) SetCompareCar(id int32) {
 	r.engineer.SetCompareCar(id)
+}
+
+// HasStore reports whether local persistence is available.
+func (r *Runtime) HasStore() bool { return r.store != nil }
+
+// EngineerContext returns the latest frame's track/car/class, used by the
+// reference supervisor to detect a context change.
+func (r *Runtime) EngineerContext() (track, car, class string) {
+	return r.engineer.CurrentContext()
+}
+
+// LoadReference loads the stored reference lap + corner names for a track+car
+// into the engine (or clears the reference when none is stored). Called when the
+// context changes. Best-effort: persistence errors are logged, never fatal.
+func (r *Runtime) LoadReference(track, car, class string) {
+	if r.store == nil {
+		return
+	}
+	ref, ok, err := r.store.GetReferenceLap(track, car)
+	if err != nil {
+		log.Printf("store: load reference: %v", err)
+	}
+	if ok {
+		var sectors []engineer.MiniSectorState
+		var path []engineer.Vec2
+		_ = json.Unmarshal([]byte(ref.Sectors), &sectors)
+		_ = json.Unmarshal([]byte(ref.Path), &path)
+		r.engineer.SetReference(track, car, ref.Class, ref.LapTime, sectors, path)
+	} else {
+		r.engineer.SetReference(track, car, class, 0, nil, nil)
+	}
+	if labelsJSON, ok, err := r.store.GetCorners(track); err != nil {
+		log.Printf("store: load corners: %v", err)
+	} else if ok {
+		var labels []string
+		_ = json.Unmarshal([]byte(labelsJSON), &labels)
+		r.engineer.SetCorners(track, labels)
+	}
+}
+
+// PersistDirty saves any reference lap / corner labels the engine has newly
+// produced (a beaten PB). Cheap when nothing changed.
+func (r *Runtime) PersistDirty() {
+	if r.store == nil {
+		return
+	}
+	if data, ok := r.engineer.TakeDirtyReference(); ok {
+		sectors, _ := json.Marshal(data.Sectors)
+		path, _ := json.Marshal(data.Path)
+		if err := r.store.SaveReferenceLap(store.ReferenceLap{
+			Track: data.Track, Car: data.Car, Class: data.Class,
+			LapTime: data.Time, Sectors: string(sectors), Path: string(path),
+		}); err != nil {
+			log.Printf("store: save reference: %v", err)
+		}
+	}
+	if track, labels, ok := r.engineer.TakeDirtyCorners(); ok {
+		b, _ := json.Marshal(labels)
+		if err := r.store.SaveCorners(track, string(b)); err != nil {
+			log.Printf("store: save corners: %v", err)
+		}
+	}
+}
+
+// StartSession opens a session row for the history log, returning its id (0 when
+// no store).
+func (r *Runtime) StartSession(track, car string) int64 {
+	if r.store == nil {
+		return 0
+	}
+	id, err := r.store.StartSession(track, car)
+	if err != nil {
+		log.Printf("store: start session: %v", err)
+		return 0
+	}
+	return id
+}
+
+// UpdateSession records running progress for a session.
+func (r *Runtime) UpdateSession(id int64, laps int, bestLap float64) {
+	if r.store == nil || id == 0 {
+		return
+	}
+	if err := r.store.UpdateSession(id, laps, bestLap); err != nil {
+		log.Printf("store: update session: %v", err)
+	}
+}
+
+// ListSessions returns recent session history (empty when no store).
+func (r *Runtime) ListSessions(limit int) []store.SessionRow {
+	if r.store == nil {
+		return nil
+	}
+	rows, err := r.store.ListSessions(limit)
+	if err != nil {
+		log.Printf("store: list sessions: %v", err)
+	}
+	return rows
+}
+
+// IndexLatestRecording records metadata for the most recently written recording
+// file, tagging it with the current track/car/source. Called after a recording
+// stops.
+func (r *Runtime) IndexLatestRecording(track, car, source string) {
+	if r.store == nil || r.recorder == nil {
+		return
+	}
+	infos, err := r.recorder.List()
+	if err != nil || len(infos) == 0 {
+		return
+	}
+	// List() returns newest first (see recording.Manager.List); index entry 0.
+	latest := infos[0]
+	if err := r.store.UpsertRecording(store.RecordingRow{
+		Name: latest.Name, Track: track, Car: car, Source: source,
+		RecordedAt: latest.Modified.Unix(), SizeBytes: latest.Size,
+	}); err != nil {
+		log.Printf("store: index recording: %v", err)
+	}
+}
+
+// ListIndexedRecordings returns the recordings index (empty when no store).
+func (r *Runtime) ListIndexedRecordings() []store.RecordingRow {
+	if r.store == nil {
+		return nil
+	}
+	rows, err := r.store.ListRecordings()
+	if err != nil {
+		log.Printf("store: list recordings: %v", err)
+	}
+	return rows
 }
 
 func (r *Runtime) PrintEvery() time.Duration {
@@ -361,6 +496,12 @@ func (r *Runtime) Close() {
 	if driver != nil {
 		if err := driver.Close(); err != nil {
 			log.Printf("moza close: %v", err)
+		}
+	}
+
+	if r.store != nil {
+		if err := r.store.Close(); err != nil {
+			log.Printf("store close: %v", err)
 		}
 	}
 }

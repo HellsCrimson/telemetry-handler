@@ -22,6 +22,7 @@ import LiveData from "./tabs/LiveData";
 import DriverCoaching from "./tabs/DriverCoaching";
 import CarManagement from "./tabs/CarManagement";
 import DriverVs from "./tabs/DriverVs";
+import History from "./tabs/History";
 import StrategySettings from "./tabs/StrategySettings";
 
 // The five main strategy tabs from LMU_PLAN.md plus Settings. Phase 1 implements
@@ -33,6 +34,7 @@ const TABS = [
   ["vs", "Driver Vs."],
   ["coaching", "Driver Coaching"],
   ["car", "Car Management"],
+  ["history", "History"],
   ["settings", "Settings"],
 ] as const;
 
@@ -86,7 +88,9 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
       </nav>
 
       <main>
-        {!available && <p className="muted">No live session. Start Le Mans Ultimate (with the lmu-bridge sidecar) or replay an LMU recording.</p>}
+        {!available && activeTab !== "history" && activeTab !== "settings" && (
+          <p className="muted">No live session. Start Le Mans Ultimate (with the lmu-bridge sidecar) or replay an LMU recording.</p>
+        )}
 
         {available && state && activeTab === "live" && <LiveData state={state} />}
         {available && state && activeTab === "strategy" && (
@@ -103,9 +107,10 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
         {available && state && activeTab === "car" && <CarManagement state={state} />}
         {available && state && activeTab === "vs" && <DriverVs state={state} />}
 
+        {activeTab === "history" && <History />}
         {activeTab === "settings" && <StrategySettings settings={settings} update={updateSettings} />}
 
-        {available && state && <EventTimeline events={state.events} />}
+        {available && state && activeTab !== "history" && <EventTimeline events={state.events} />}
       </main>
     </div>
   );

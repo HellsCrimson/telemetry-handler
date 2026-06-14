@@ -21,6 +21,7 @@ import (
 	"telemetry-handler/overlay"
 	"telemetry-handler/receiver"
 	"telemetry-handler/recording"
+	"telemetry-handler/store"
 )
 
 const (
@@ -38,6 +39,11 @@ const (
 	// wheel while it is enabled but not connected (e.g. powered on after the app
 	// started).
 	mozaReconnectEvery = 3 * time.Second
+
+	// referenceReconcileEvery is how often the strategy supervisor loads the
+	// reference lap on a context change, persists a newly-beaten PB, and updates
+	// the session-history row. Kept off the hot frame path on purpose.
+	referenceReconcileEvery = 2 * time.Second
 )
 
 // Service is the Wails-bound surface of the application. Its exported methods
@@ -106,9 +112,59 @@ func (s *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	s.overlayDesired.Store(cfg.Overlay.Enabled)
 	go s.superviseOverlay(ctx)
 	go s.superviseMoza(ctx)
+	if s.runtime.HasStore() {
+		go s.superviseReference(ctx)
+	}
 
 	go s.runReceiver(ctx, cfg)
 	return nil
+}
+
+// superviseReference bridges the strategy engine and the local store off the hot
+// frame path: when the track/car context changes it loads that car's reference
+// lap + corner names, it persists a newly-beaten PB, and it keeps the session
+// history row up to date. Runs only when persistence is available.
+func (s *Service) superviseReference(ctx context.Context) {
+	ticker := time.NewTicker(referenceReconcileEvery)
+	defer ticker.Stop()
+	var lastTrack, lastCar string
+	var sessionID int64
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			track, car, class := s.runtime.EngineerContext()
+			if track == "" {
+				continue
+			}
+			if track != lastTrack || car != lastCar {
+				s.runtime.LoadReference(track, car, class)
+				sessionID = s.runtime.StartSession(track, car)
+				lastTrack, lastCar = track, car
+			}
+			if laps, best, ok := playerProgress(s.runtime.EngineerState()); ok {
+				s.runtime.UpdateSession(sessionID, laps, best)
+			}
+			s.runtime.PersistDirty()
+		}
+	}
+}
+
+// playerProgress pulls the player car's lap count and best lap from a session
+// snapshot, for the session-history row.
+func playerProgress(state engineer.SessionState) (laps int, best float64, ok bool) {
+	for i := range state.Cars {
+		if state.Cars[i].ID == state.PlayerID || state.Cars[i].IsPlayer {
+			c := state.Cars[i]
+			b := c.BestLap
+			if c.BestMeasured > 0 && (b == 0 || c.BestMeasured < b) {
+				b = c.BestMeasured
+			}
+			return c.TotalLaps, b, true
+		}
+	}
+	return 0, 0, false
 }
 
 // ServiceShutdown is invoked by Wails during application shutdown.
@@ -381,11 +437,30 @@ func (s *Service) StartRecording() (recording.Status, error) {
 }
 
 func (s *Service) StopRecording() (recording.Status, error) {
-	return s.runtime.StopRecording()
+	status, err := s.runtime.StopRecording()
+	if err == nil {
+		// Index the file just written, tagged with the current session's game/car/
+		// track, so the recordings list carries searchable metadata.
+		snap := s.runtime.LatestTelemetry()
+		s.runtime.IndexLatestRecording(snap.Meta.Track, snap.Meta.Car, snap.Source)
+	}
+	return status, err
 }
 
 func (s *Service) ListRecordings() ([]recording.Info, error) {
 	return s.runtime.ListRecordings()
+}
+
+// ListSessions returns the persisted session/stint history (newest first), or an
+// empty list when persistence is unavailable. Bound for the Strategy History view.
+func (s *Service) ListSessions() []store.SessionRow {
+	return s.runtime.ListSessions(50)
+}
+
+// ListIndexedRecordings returns the recordings index with track/car/source
+// metadata (newest first), or an empty list when persistence is unavailable.
+func (s *Service) ListIndexedRecordings() []store.RecordingRow {
+	return s.runtime.ListIndexedRecordings()
 }
 
 func (s *Service) ReplayRecording(name string, maxSamples int) ([]ReplaySample, error) {

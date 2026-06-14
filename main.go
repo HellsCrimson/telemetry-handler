@@ -14,6 +14,7 @@ import (
 	"telemetry-handler/config"
 	"telemetry-handler/moza"
 	"telemetry-handler/recording"
+	"telemetry-handler/store"
 )
 
 //go:embed all:frontend/dist
@@ -62,7 +63,16 @@ func main() {
 		log.Fatalf("recording: %v", err)
 	}
 
-	runtime := app.NewRuntime(cfg, loadedPath, recorder)
+	// Local SQLite store for data that outlives a run (reference laps, corner
+	// names, session history, recordings index). A failure here is non-fatal: the
+	// app runs without persistence, exactly as before.
+	st, err := store.Open("telemetry.db")
+	if err != nil {
+		log.Printf("store: %v (continuing without persistence)", err)
+		st = nil
+	}
+
+	runtime := app.NewRuntime(cfg, loadedPath, recorder, st)
 	if loadErrMsg != "" {
 		runtime.SetLoadError(loadErrPath, loadErrMsg)
 	}

@@ -6,6 +6,60 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * BalanceState is the heuristic chassis-balance read for the player car: whether
+ * it tends to understeer or oversteer through corners, and an advisory proposal.
+ * It is a HEURISTIC from grip/slip telemetry, not a setup readout (LMU doesn't
+ * expose the setup), so it suggests a direction, never exact values.
+ */
+export class BalanceState {
+    /**
+     * cornering frames observed (0 = not enough data)
+     */
+    "samples": number;
+
+    /**
+     * -1 (oversteer) .. +1 (understeer)
+     */
+    "bias": number;
+
+    /**
+     * "Understeer" | "Neutral" | "Oversteer" | ""
+     */
+    "verdict": string;
+
+    /**
+     * advisory text
+     */
+    "proposal": string;
+
+    /** Creates a new BalanceState instance. */
+    constructor($$source: Partial<BalanceState> = {}) {
+        if (!("samples" in $$source)) {
+            this["samples"] = 0;
+        }
+        if (!("bias" in $$source)) {
+            this["bias"] = 0;
+        }
+        if (!("verdict" in $$source)) {
+            this["verdict"] = "";
+        }
+        if (!("proposal" in $$source)) {
+            this["proposal"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new BalanceState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): BalanceState {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new BalanceState($$parsedSource as Partial<BalanceState>);
+    }
+}
+
+/**
  * CarState is one car's strategy-relevant state. Every field is filled from the
  * current frame; nothing here requires history. Fuel/battery are read per car —
  * the sidecar reads the telemetry buffer for the whole grid, so rivals' values
@@ -504,6 +558,11 @@ export class PlayerDetail {
      */
     "worst_dent": number;
 
+    /**
+     * Balance is the heuristic understeer/oversteer assessment + advisory proposal.
+     */
+    "balance": BalanceState;
+
     /** Creates a new PlayerDetail instance. */
     constructor($$source: Partial<PlayerDetail> = {}) {
         if (!("present" in $$source)) {
@@ -563,6 +622,9 @@ export class PlayerDetail {
         if (!("worst_dent" in $$source)) {
             this["worst_dent"] = 0;
         }
+        if (!("balance" in $$source)) {
+            this["balance"] = (new BalanceState());
+        }
 
         Object.assign(this, $$source);
     }
@@ -571,7 +633,11 @@ export class PlayerDetail {
      * Creates a new PlayerDetail instance from a string or object.
      */
     static createFrom($$source: any = {}): PlayerDetail {
+        const $$createField19_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("balance" in $$parsedSource) {
+            $$parsedSource["balance"] = $$createField19_0($$parsedSource["balance"]);
+        }
         return new PlayerDetail($$parsedSource as Partial<PlayerDetail>);
     }
 }
@@ -690,6 +756,11 @@ export class SessionState {
      */
     "events": RaceEvent[];
 
+    /**
+     * per-mini-sector corner label ("T1"/""=straight); derived from the reference lap
+     */
+    "corners": string[];
+
     /** Creates a new SessionState instance. */
     constructor($$source: Partial<SessionState> = {}) {
         if (!("available" in $$source)) {
@@ -734,6 +805,9 @@ export class SessionState {
         if (!("events" in $$source)) {
             this["events"] = [];
         }
+        if (!("corners" in $$source)) {
+            this["corners"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -742,11 +816,12 @@ export class SessionState {
      * Creates a new SessionState instance from a string or object.
      */
     static createFrom($$source: any = {}): SessionState {
-        const $$createField9_0 = $$createType6;
-        const $$createField10_0 = $$createType7;
-        const $$createField11_0 = $$createType9;
-        const $$createField12_0 = $$createType10;
-        const $$createField13_0 = $$createType12;
+        const $$createField9_0 = $$createType7;
+        const $$createField10_0 = $$createType8;
+        const $$createField11_0 = $$createType10;
+        const $$createField12_0 = $$createType11;
+        const $$createField13_0 = $$createType13;
+        const $$createField14_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("flags" in $$parsedSource) {
             $$parsedSource["flags"] = $$createField9_0($$parsedSource["flags"]);
@@ -762,6 +837,9 @@ export class SessionState {
         }
         if ("events" in $$parsedSource) {
             $$parsedSource["events"] = $$createField13_0($$parsedSource["events"]);
+        }
+        if ("corners" in $$parsedSource) {
+            $$parsedSource["corners"] = $$createField14_0($$parsedSource["corners"]);
         }
         return new SessionState($$parsedSource as Partial<SessionState>);
     }
@@ -930,10 +1008,12 @@ const $$createType2 = MiniSectorState.createFrom;
 const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = Vec2.createFrom;
 const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = FlagState.createFrom;
-const $$createType7 = WeatherState.createFrom;
-const $$createType8 = CarState.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = PlayerDetail.createFrom;
-const $$createType11 = RaceEvent.createFrom;
-const $$createType12 = $Create.Array($$createType11);
+const $$createType6 = BalanceState.createFrom;
+const $$createType7 = FlagState.createFrom;
+const $$createType8 = WeatherState.createFrom;
+const $$createType9 = CarState.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = PlayerDetail.createFrom;
+const $$createType12 = RaceEvent.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = $Create.Array($Create.Any);

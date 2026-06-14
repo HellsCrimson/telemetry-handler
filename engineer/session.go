@@ -42,8 +42,9 @@ type SessionState struct {
 	Flags          FlagState    `json:"flags"`
 	Weather        WeatherState `json:"weather"`
 	Cars           []CarState   `json:"cars"`
-	Player         PlayerDetail `json:"player"` // car-management detail for the player car only
-	Events         []RaceEvent  `json:"events"` // most-recent-last race timeline (bounded)
+	Player         PlayerDetail `json:"player"`  // car-management detail for the player car only
+	Events         []RaceEvent  `json:"events"`  // most-recent-last race timeline (bounded)
+	Corners        []string     `json:"corners"` // per-mini-sector corner label ("T1"/""=straight); derived from the reference lap
 }
 
 // PlayerDetail is the instantaneous "Car Management" view of the player's car:
@@ -82,6 +83,20 @@ type PlayerDetail struct {
 	// damage: per-panel dent severity (0=none,1=minor,2=major)
 	DentSeverity [8]int `json:"dent_severity"`
 	WorstDent    int    `json:"worst_dent"` // max of DentSeverity, for a quick at-a-glance level
+
+	// Balance is the heuristic understeer/oversteer assessment + advisory proposal.
+	Balance BalanceState `json:"balance"`
+}
+
+// BalanceState is the heuristic chassis-balance read for the player car: whether
+// it tends to understeer or oversteer through corners, and an advisory proposal.
+// It is a HEURISTIC from grip/slip telemetry, not a setup readout (LMU doesn't
+// expose the setup), so it suggests a direction, never exact values.
+type BalanceState struct {
+	Samples  int     `json:"samples"`  // cornering frames observed (0 = not enough data)
+	Bias     float64 `json:"bias"`     // -1 (oversteer) .. +1 (understeer)
+	Verdict  string  `json:"verdict"`  // "Understeer" | "Neutral" | "Oversteer" | ""
+	Proposal string  `json:"proposal"` // advisory text
 }
 
 // CarState is one car's strategy-relevant state. Every field is filled from the

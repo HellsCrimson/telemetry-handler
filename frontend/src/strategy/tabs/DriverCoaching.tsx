@@ -31,8 +31,8 @@ export default function DriverCoaching({ state }: { state: SessionState }) {
     <div className="strat-coaching">
       <section className="strat-group">
         <h3>Tire usage by mini-sector — last lap (total {(totalWear * 100).toFixed(1)}%)</h3>
-        <MiniSectorBars values={wearPerSector} color="var(--red)" format={(v) => `${(v * 100).toFixed(2)} %`} highlight={minSpeed} />
-        <p className="muted strat-axis-note">Bar = tire wear consumed (4 wheels). Number under each bar = min speed (km/h).</p>
+        <MiniSectorBars values={wearPerSector} color="var(--red)" format={(v) => `${(v * 100).toFixed(2)} %`} highlight={minSpeed} corners={state.corners} />
+        <p className="muted strat-axis-note">Bar = tire wear consumed (4 wheels). Labels are corners (T1, T2…); number under a straight = min speed (km/h).</p>
       </section>
 
       <section className="strat-group">
@@ -40,9 +40,11 @@ export default function DriverCoaching({ state }: { state: SessionState }) {
           Fuel usage by mini-sector — last lap (total {totalFuel.toFixed(2)} L
           {bestFuel > 0 ? ` · best lap ${bestFuel.toFixed(2)} L` : ""})
         </h3>
-        <MiniSectorBars values={fuelPerSector} color="var(--blue)" format={(v) => `${v.toFixed(3)} L`} highlight={minSpeed} />
+        <MiniSectorBars values={fuelPerSector} color="var(--blue)" format={(v) => `${v.toFixed(3)} L`} highlight={minSpeed} corners={state.corners} />
         <p className="muted strat-axis-note">Bar = fuel burned. Lift-and-coast zones show as shorter bars on the straights.</p>
       </section>
+
+      <BalancePanel state={state} />
 
       <section className="strat-group">
         <h3>Driven line — last lap vs your best lap</h3>
@@ -58,5 +60,34 @@ export default function DriverCoaching({ state }: { state: SessionState }) {
         <p className="muted">Current lap is being recorded — the charts above update when it completes.</p>
       )}
     </div>
+  );
+}
+
+// BalancePanel shows the advisory understeer/oversteer read. The bias bar runs
+// oversteer (left) ↔ understeer (right); the verdict + proposal are heuristic.
+function BalancePanel({ state }: { state: SessionState }) {
+  const b = state.player?.balance;
+  if (!b) return null;
+  // Map bias (-1..1) to a 0..100% marker position.
+  const pos = Math.max(0, Math.min(100, (b.bias + 1) * 50));
+  return (
+    <section className="strat-group">
+      <h3>Balance (advisory) {b.verdict ? `— ${b.verdict}` : ""}</h3>
+      {b.samples < 200 ? (
+        <p className="muted">{b.proposal}</p>
+      ) : (
+        <>
+          <div className="strat-balance-bar">
+            <span className="strat-balance-end">Oversteer</span>
+            <div className="strat-balance-track">
+              <div className="strat-balance-mark" style={{ left: `${pos}%` }} />
+            </div>
+            <span className="strat-balance-end">Understeer</span>
+          </div>
+          <p className="strat-axis-note">{b.proposal}</p>
+          <p className="muted strat-axis-note">Heuristic from grip/slip — a direction, not a setup value. ARB/setup data isn’t exposed by LMU.</p>
+        </>
+      )}
+    </section>
   );
 }

@@ -28,6 +28,9 @@ import * as wire$0 from "../lmu/wire/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as recording$0 from "../recording/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as store$0 from "../store/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -116,18 +119,38 @@ export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
 }
 
 /**
+ * ListIndexedRecordings returns the recordings index with track/car/source
+ * metadata (newest first), or an empty list when persistence is unavailable.
+ */
+export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRow[]> {
+    return $Call.ByID(189090443).then(($result: any) => {
+        return $$createType11($result);
+    });
+}
+
+/**
  * ListMonitors returns the names of all connected monitors for the overlay
  * output dropdown (empty when enumeration is unavailable, e.g. non-Hyprland).
  */
 export function ListMonitors(): $CancellablePromise<string[]> {
     return $Call.ByID(4014067021).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType12($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType14($result);
+    });
+}
+
+/**
+ * ListSessions returns the persisted session/stint history (newest first), or an
+ * empty list when persistence is unavailable. Bound for the Strategy History view.
+ */
+export function ListSessions(): $CancellablePromise<store$0.SessionRow[]> {
+    return $Call.ByID(660293959).then(($result: any) => {
+        return $$createType16($result);
     });
 }
 
@@ -137,7 +160,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType18($result);
     });
 }
 
@@ -186,8 +209,12 @@ const $$createType6 = $models.MonitorInfo.createFrom;
 const $$createType7 = $models.OverlayStatus.createFrom;
 const $$createType8 = recording$0.Status.createFrom;
 const $$createType9 = $models.TelemetrySnapshot.createFrom;
-const $$createType10 = $Create.Array($Create.Any);
-const $$createType11 = recording$0.Info.createFrom;
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = $models.ReplaySample.createFrom;
+const $$createType10 = store$0.RecordingRow.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = $Create.Array($Create.Any);
+const $$createType13 = recording$0.Info.createFrom;
 const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = store$0.SessionRow.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = $models.ReplaySample.createFrom;
+const $$createType18 = $Create.Array($$createType17);

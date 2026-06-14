@@ -56,7 +56,7 @@ func TestReplayRecordingDemux(t *testing.T) {
 		t.Fatalf("Stop: %v", err)
 	}
 
-	rt := NewRuntime(config.Default(), "", mgr)
+	rt := NewRuntime(config.Default(), "", mgr, nil)
 	samples, err := rt.ReplayRecording(status.Name, 0)
 	if err != nil {
 		t.Fatalf("ReplayRecording: %v", err)
@@ -114,7 +114,7 @@ func TestAnalyzeRecordingLMU(t *testing.T) {
 		t.Fatalf("Stop: %v", err)
 	}
 
-	rt := NewRuntime(config.Default(), "", mgr)
+	rt := NewRuntime(config.Default(), "", mgr, nil)
 	report, err := rt.AnalyzeRecording(status.Name, 0)
 	if err != nil {
 		t.Fatalf("AnalyzeRecording: %v", err)

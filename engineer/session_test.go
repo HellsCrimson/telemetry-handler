@@ -284,6 +284,51 @@ func TestEventDetectorFlagsAndPits(t *testing.T) {
 	}
 }
 
+func TestDeriveCorners(t *testing.T) {
+	// Build a lap profile: fast straight, a slow corner (3 sectors), fast again,
+	// another slow corner (2 sectors). Top speed ~ 80 m/s; corners drop to ~30.
+	sectors := make([]MiniSectorState, numMiniSectors)
+	for i := range sectors {
+		sectors[i] = MiniSectorState{Index: i, EntrySpeed: 80, ExitSpeed: 80, MinSpeed: 80}
+	}
+	for _, i := range []int{4, 5, 6} {
+		sectors[i].MinSpeed = 30
+	}
+	for _, i := range []int{12, 13} {
+		sectors[i].MinSpeed = 28
+	}
+	labels := deriveCorners(sectors)
+	if labels[0] != "" {
+		t.Errorf("straight sector labelled %q", labels[0])
+	}
+	if labels[4] != "T1" || labels[5] != "T1" || labels[6] != "T1" {
+		t.Errorf("first corner not grouped as T1: %v", labels[4:7])
+	}
+	if labels[12] != "T2" || labels[13] != "T2" {
+		t.Errorf("second corner not T2: %v", labels[12:14])
+	}
+}
+
+func TestBalanceTrackerVerdict(t *testing.T) {
+	var b balanceTracker
+	// Feed strong understeer (front sliding more) through enough cornering frames.
+	for range 500 {
+		b.update(0.5, 0.1, 0.3, 50) // frontSlip > rearSlip, cornering
+	}
+	st := b.state()
+	if st.Verdict != "Understeer" {
+		t.Errorf("verdict = %q, want Understeer (bias=%v)", st.Verdict, st.Bias)
+	}
+	// Straight-line frames (low steering) must be ignored.
+	var b2 balanceTracker
+	for range 500 {
+		b2.update(0.9, 0.1, 0.01, 50) // steering below threshold
+	}
+	if b2.state().Samples != 0 {
+		t.Errorf("straight-line frames counted: %d", b2.state().Samples)
+	}
+}
+
 func TestDownsample(t *testing.T) {
 	var path []Vec2
 	for i := range 1000 {

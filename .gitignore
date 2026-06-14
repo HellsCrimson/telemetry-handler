@@ -1,6 +1,11 @@
 config.json
 *.gz
 
+# Local SQLite store (reference laps, corners, sessions, recordings index)
+telemetry.db
+telemetry.db-shm
+telemetry.db-wal
+
 # Wails / frontend
 .task
 bin

@@ -59,8 +59,8 @@ export default function DriverVs({ state }: { state: SessionState }) {
         </div>
       </section>
 
-      <Comparison title="Tire usage by mini-sector (best lap)" you={youRef} rival={rivalRef} rivalColor={classColor(rival?.class ?? "")} rivalLabel={rival?.driver || rival?.car_name || "Rival"} pick={(m) => m.tire_wear.reduce((a, b) => a + b, 0)} format={(v) => `${(v * 100).toFixed(2)} %`} youColor="var(--red)" />
-      <Comparison title="Fuel usage by mini-sector (best lap)" you={youRef} rival={rivalRef} rivalColor={classColor(rival?.class ?? "")} rivalLabel={rival?.driver || rival?.car_name || "Rival"} pick={(m) => m.fuel_used} format={(v) => `${v.toFixed(3)} L`} youColor="var(--blue)" />
+      <Comparison title="Tire usage by mini-sector (best lap)" you={youRef} rival={rivalRef} corners={state.corners} rivalColor={classColor(rival?.class ?? "")} rivalLabel={rival?.driver || rival?.car_name || "Rival"} pick={(m) => m.tire_wear.reduce((a, b) => a + b, 0)} format={(v) => `${(v * 100).toFixed(2)} %`} youColor="var(--red)" />
+      <Comparison title="Fuel usage by mini-sector (best lap)" you={youRef} rival={rivalRef} corners={state.corners} rivalColor={classColor(rival?.class ?? "")} rivalLabel={rival?.driver || rival?.car_name || "Rival"} pick={(m) => m.fuel_used} format={(v) => `${v.toFixed(3)} L`} youColor="var(--blue)" />
 
       <section className="strat-group">
         <h3>Driven line — you vs {rival?.driver || rival?.car_name || "rival"}</h3>
@@ -91,6 +91,7 @@ function Comparison({
   title,
   you,
   rival,
+  corners,
   youColor,
   rivalColor,
   rivalLabel,
@@ -100,6 +101,7 @@ function Comparison({
   title: string;
   you: MiniSectorState[];
   rival: MiniSectorState[];
+  corners: string[];
   youColor: string;
   rivalColor: string;
   rivalLabel: string;
@@ -114,7 +116,7 @@ function Comparison({
       ) : (
         <>
           <p className="strat-vs-label">You</p>
-          <MiniSectorBars values={you.map(pick)} color={youColor} format={format} />
+          <MiniSectorBars values={you.map(pick)} color={youColor} format={format} corners={corners} />
         </>
       )}
       {rival.length === 0 ? (
@@ -122,7 +124,7 @@ function Comparison({
       ) : (
         <>
           <p className="strat-vs-label">{rivalLabel}</p>
-          <MiniSectorBars values={rival.map(pick)} color={rivalColor} format={format} />
+          <MiniSectorBars values={rival.map(pick)} color={rivalColor} format={format} corners={corners} />
         </>
       )}
     </section>
