@@ -14,7 +14,7 @@ import (
 	"math"
 	"sort"
 
-	"telemetry-handler/forza"
+	"telemetry-handler/game/forza"
 )
 
 // Frame is the unit of analysis input: a parsed telemetry frame plus its offset

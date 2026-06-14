@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // The Extended buffer (rF2Extended) holds the session driving aids, the pit

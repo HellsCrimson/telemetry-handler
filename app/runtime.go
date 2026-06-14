@@ -11,9 +11,9 @@ import (
 	"telemetry-handler/analysis"
 	"telemetry-handler/config"
 	"telemetry-handler/engineer"
-	"telemetry-handler/forza"
-	"telemetry-handler/lmu/wire"
-	"telemetry-handler/moza"
+	"telemetry-handler/game/forza"
+	"telemetry-handler/game/lmu/wire"
+	"telemetry-handler/wheelbase/moza"
 	"telemetry-handler/recording"
 	"telemetry-handler/store"
 )

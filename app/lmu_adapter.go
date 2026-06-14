@@ -4,9 +4,9 @@ import (
 	"hash/fnv"
 	"math"
 
-	"telemetry-handler/forza"
-	"telemetry-handler/lmu"
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/forza"
+	"telemetry-handler/game/lmu"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // kelvinToCelsius converts an rF2 tire temperature (Kelvin) to Celsius, leaving

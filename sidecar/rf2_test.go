@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // TestRF2ExtendedSize pins the hand-mirrored rF2Extended layout to its computed

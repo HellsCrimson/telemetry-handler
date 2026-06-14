@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"telemetry-handler/config"
-	"telemetry-handler/forza"
+	"telemetry-handler/game/forza"
 )
 
 const staleAfter = 2 * time.Second

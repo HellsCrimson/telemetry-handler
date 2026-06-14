@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"telemetry-handler/forza"
+	"telemetry-handler/game/forza"
 )
 
 func TestFormatHUDFormatsTelemetry(t *testing.T) {

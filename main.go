@@ -12,7 +12,7 @@ import (
 
 	"telemetry-handler/app"
 	"telemetry-handler/config"
-	"telemetry-handler/moza"
+	"telemetry-handler/wheelbase/moza"
 	"telemetry-handler/recording"
 	"telemetry-handler/store"
 )

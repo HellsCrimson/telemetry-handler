@@ -3,7 +3,7 @@ package output
 import (
 	"fmt"
 
-	"telemetry-handler/forza"
+	"telemetry-handler/game/forza"
 )
 
 type Formatter struct{}

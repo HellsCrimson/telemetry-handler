@@ -8,7 +8,7 @@
 // plus the session globals (weather, rules, driving aids, pit speed limit) —
 // and re-emits one consistent binary frame per tick over UDP. A frame can
 // exceed the 64KB datagram limit at a full grid, so it is split into several
-// chunked datagrams the main app reassembles (see telemetry-handler/lmu/wire).
+// chunked datagrams the main app reassembles (see telemetry-handler/game/lmu/wire).
 //
 // On Linux the game runs under Proton/Wine, and the shared memory lives inside
 // the Wine prefix's namespace — invisible to native processes. So this binary
@@ -28,7 +28,7 @@ import (
 	"os/signal"
 	"time"
 
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // Names of the rF2 Shared Memory Map Plugin's buffers.

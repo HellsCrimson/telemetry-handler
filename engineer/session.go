@@ -23,7 +23,7 @@ package engineer
 import (
 	"math"
 
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // SessionState is the complete, game-agnostic snapshot the strategy UI renders.

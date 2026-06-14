@@ -4,7 +4,7 @@ import (
 	"math"
 	"sync"
 
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // Engineer is the live strategy engine. It observes every telemetry frame the

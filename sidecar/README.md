@@ -10,7 +10,7 @@ tires/suspension/forces, aero, damage, electric boost, …), the **full per-car
 scoring** (positions, lap/sector times, gaps, pit state, flags, names) and the
 **session globals** (weather, track rules / safety car, driving aids, pit speed
 limit). A full grid exceeds the 64KB UDP datagram limit, so a frame is split
-into chunked datagrams the app reassembles (see `telemetry-handler/lmu/wire`).
+into chunked datagrams the app reassembles (see `telemetry-handler/game/lmu/wire`).
 
 LMU has no native UDP telemetry. On Linux the game runs under Proton/Wine and
 its shared memory lives **inside the Wine prefix**, invisible to native Linux
@@ -90,7 +90,7 @@ or capture `-dump-scoring 4096` / `-dump 2048` and check the offsets.
 
 ## Notes / internals
 
-- **Wire format:** binary, defined once in `telemetry-handler/lmu/wire` and
+- **Wire format:** binary, defined once in `telemetry-handler/game/lmu/wire` and
   shared by the sidecar (encoder) and the app (decoder), so the two ends can't
   drift. The per-vehicle structs mirror the rF2 `pack(4)` C structs
   field-for-field (those have no implicit padding — alignment gaps are explicit
@@ -113,7 +113,7 @@ or capture `-dump-scoring 4096` / `-dump 2048` and check the offsets.
   `udp_windows.go`.
 - **Struct offsets** are derived from `rF2State.h` (TheIronWolfModding); `long`
   is 32-bit and pointers/`ULONGLONG` align to 4 under MSVC `pack(4)`. If a future
-  plugin build changes the layout, fix the mirror structs in `lmu/wire` and the
+  plugin build changes the layout, fix the mirror structs in `game/lmu/wire` and the
   prefix/offset constants in `rf2.go`/`rf2_extended.go` (the size-assertion tests
   will flag a mismatch).
 ```

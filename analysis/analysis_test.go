@@ -3,7 +3,7 @@ package analysis
 import (
 	"testing"
 
-	"telemetry-handler/forza"
+	"telemetry-handler/game/forza"
 )
 
 const frameStepMS = 16 // ~60 Hz, matches FH6

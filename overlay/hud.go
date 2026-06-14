@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"telemetry-handler/config"
-	"telemetry-handler/forza"
+	"telemetry-handler/game/forza"
 )
 
 // pedalHistorySeconds is how many seconds of throttle/brake history the overlay

@@ -1,6 +1,6 @@
 package analysis
 
-import "telemetry-handler/forza"
+import "telemetry-handler/game/forza"
 
 // Tuning constants. Forza's slip-ratio units are not officially documented, so
 // these thresholds are heuristics calibrated to feel right; tune them here.

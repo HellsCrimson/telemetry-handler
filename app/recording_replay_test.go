@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"telemetry-handler/config"
-	"telemetry-handler/forza"
-	"telemetry-handler/lmu"
+	"telemetry-handler/game/forza"
+	"telemetry-handler/game/lmu"
 	"telemetry-handler/recording"
 )
 

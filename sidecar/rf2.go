@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"math"
 
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // This file maps the rF2 Shared Memory Map Plugin's buffers (TheIronWolf's

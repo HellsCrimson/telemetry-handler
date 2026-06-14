@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"telemetry-handler/lmu"
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu"
+	"telemetry-handler/game/lmu/wire"
 )
 
 func TestLMUAdapterMapping(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // putString copies a Go string into a fixed-width NUL-terminated byte field, the

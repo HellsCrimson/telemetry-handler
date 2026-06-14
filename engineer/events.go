@@ -3,7 +3,7 @@ package engineer
 import (
 	"fmt"
 
-	"telemetry-handler/lmu/wire"
+	"telemetry-handler/game/lmu/wire"
 )
 
 // This file generates the race timeline. The engine compares each frame to the
