@@ -55,9 +55,21 @@ type lapAccumulator struct {
 	last    []MiniSectorState // last completed lap
 	hasLast bool
 
-	// trackPath turns on driven-line capture (player car only — it's heavy). When
-	// set, each update records the world position; on lap completion the raw path
-	// is downsampled into lastPath.
+	// curLapFull marks that the in-progress lap began at the start/finish line (a
+	// lap rollover), so it covers the whole track. The very first lap the engine
+	// sees usually starts mid-track and is partial — we exclude those from the
+	// best-lap reference.
+	curLapFull bool
+
+	// best* hold the fastest FULL lap seen (by summed mini-sector time), the
+	// reference the Coaching/Driver Vs. views compare against.
+	bestTime float64
+	best     []MiniSectorState
+	bestPath []Vec2
+
+	// trackPath turns on driven-line capture (player + selected compare car — it's
+	// heavy). When set, each update records the world position; on lap completion
+	// the raw path is downsampled into lastPath/bestPath.
 	trackPath bool
 	curPath   []Vec2
 	lastPath  []Vec2
@@ -76,12 +88,24 @@ func (a *lapAccumulator) update(s sample) {
 		a.beginSector(idx, s)
 	case s.lap != a.lap:
 		a.closeSector(s)
+		var donePath []Vec2
+		if a.trackPath {
+			donePath = downsample(a.curPath, pathSamples)
+		}
+		// Promote this completed lap to the best reference if it was a full lap and
+		// quicker than the stored best (by summed mini-sector time).
+		if lapTime := totalLapTime(a.current); a.curLapFull && lapTime > 0 && (a.bestTime == 0 || lapTime < a.bestTime) {
+			a.bestTime = lapTime
+			a.best = a.current
+			a.bestPath = donePath
+		}
 		a.last = a.current
 		a.hasLast = true
+		a.lastPath = donePath
 		a.current = make([]MiniSectorState, numMiniSectors)
 		a.lap = s.lap
+		a.curLapFull = true // the new lap starts at the line
 		if a.trackPath {
-			a.lastPath = downsample(a.curPath, pathSamples)
 			a.curPath = a.curPath[:0]
 		}
 		a.beginSector(idx, s)
@@ -157,6 +181,24 @@ func (a *lapAccumulator) lapInProgress() []MiniSectorState {
 // when path capture is off or no lap has completed).
 func (a *lapAccumulator) lastLapPath() []Vec2 {
 	return a.lastPath
+}
+
+// bestLap / bestLapPath / bestLapTime return the fastest full lap's mini-sectors,
+// driven line and time (the reference for comparisons). nil/0 until a full lap
+// completes.
+func (a *lapAccumulator) bestLap() []MiniSectorState { return a.best }
+func (a *lapAccumulator) bestLapPath() []Vec2        { return a.bestPath }
+func (a *lapAccumulator) bestLapTime() float64       { return a.bestTime }
+
+// totalLapTime sums a lap's per-mini-sector time. Used to rank laps for the
+// best-lap reference (it's consistent with how the engine measures, which is what
+// matters for a like-for-like comparison).
+func totalLapTime(sectors []MiniSectorState) float64 {
+	var t float64
+	for i := range sectors {
+		t += sectors[i].TimeSpent
+	}
+	return t
 }
 
 // downsample reduces a path to at most n points by even-stride sampling, always

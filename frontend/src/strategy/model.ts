@@ -23,11 +23,6 @@ export type MiniSectorState = GoMiniSectorState;
 export type RaceEvent = GoRaceEvent;
 export type Vec2 = GoVec2;
 
-// pitLossSeconds is the time a full pit stop costs relative to staying out (pit
-// lane delta + service). It's a single tunable used by the pit-window estimate;
-// a per-track value can replace this constant later. ~30s is typical for LMU.
-export const PIT_LOSS_SECONDS = 30;
-
 // CLASS_COLORS maps the common LMU/endurance classes to distinct colours so the
 // circle reads at a glance. Unknown classes fall back to a stable hashed colour.
 const CLASS_COLORS: Record<string, string> = {

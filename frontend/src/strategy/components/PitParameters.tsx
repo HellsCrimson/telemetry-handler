@@ -4,9 +4,7 @@
 // never runs dry. Energy (hybrid) is shown for awareness; it self-manages.
 import { type SessionState, playerCar, lapTotal, lapsRemaining } from "../model";
 
-const SAFETY_LAPS = 1;
-
-export default function PitParameters({ state }: { state: SessionState }) {
+export default function PitParameters({ state, safetyLaps }: { state: SessionState; safetyLaps: number }) {
   const player = playerCar(state);
   if (!player) return null;
 
@@ -14,7 +12,7 @@ export default function PitParameters({ state }: { state: SessionState }) {
   const lapsLeft = lapsRemaining(state, player);
   const haveData = fuelPerLap > 0 && lapsLeft > 0;
 
-  const fuelToFinish = fuelPerLap * (lapsLeft + SAFETY_LAPS);
+  const fuelToFinish = fuelPerLap * (lapsLeft + safetyLaps);
   const fuelToAdd = Math.max(0, fuelToFinish - player.fuel);
   const overTank = player.fuel_capacity > 0 && fuelToAdd > player.fuel_capacity - player.fuel;
 
@@ -26,7 +24,7 @@ export default function PitParameters({ state }: { state: SessionState }) {
       ) : (
         <div className="strat-readouts">
           <Readout label="Fuel / lap" value={fuelPerLap.toFixed(2)} unit="L" />
-          <Readout label="Laps left" value={`${lapsLeft}`} unit={`+${SAFETY_LAPS}`} />
+          <Readout label="Laps left" value={`${lapsLeft}`} unit={`+${safetyLaps}`} />
           <Readout label="In tank" value={player.fuel.toFixed(1)} unit="L" />
           <Readout label="Add" value={fuelToAdd.toFixed(1)} unit="L" warn={overTank} />
         </div>

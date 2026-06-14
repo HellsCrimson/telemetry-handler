@@ -121,8 +121,16 @@ type CarState struct {
 	LapInProgress []MiniSectorState `json:"lap_in_progress"`
 
 	// LapPath is the driven line (world X/Z) of the last completed lap, for the
-	// Drive Line view. Player car only (it's heavy); nil otherwise.
+	// Drive Line view. Captured for the player and the selected compare car only
+	// (it's heavy); nil otherwise.
 	LapPath []Vec2 `json:"lap_path"`
+
+	// Best* hold the fastest FULL lap the engine has seen for this car — the
+	// reference the Coaching and Driver Vs. views compare against. BestSectors is
+	// filled for every car; BestPath only for the player + selected compare car.
+	BestSectors  []MiniSectorState `json:"best_sectors"`
+	BestPath     []Vec2            `json:"best_path"`
+	BestMeasured float64           `json:"best_measured"` // engine-measured best lap time (s)
 }
 
 // Vec2 is a world-plane point (X east/west, Z north/south) used for the driven

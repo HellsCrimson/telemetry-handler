@@ -167,6 +167,12 @@ func (r *Runtime) EngineerState() engineer.SessionState {
 	return r.engineer.Snapshot()
 }
 
+// SetCompareCar selects the rival whose driven line the engine buffers for the
+// Driver Vs. line overlay. Passes through to the engine (own lock).
+func (r *Runtime) SetCompareCar(id int32) {
+	r.engineer.SetCompareCar(id)
+}
+
 func (r *Runtime) PrintEvery() time.Duration {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

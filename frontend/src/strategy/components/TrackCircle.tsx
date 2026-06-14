@@ -12,7 +12,6 @@ import {
   type CarState,
   classColor,
   playerCar,
-  PIT_LOSS_SECONDS,
 } from "../model";
 
 const SIZE = 460; // SVG viewport (square)
@@ -26,12 +25,12 @@ function pointOnRing(frac: number, radius = R): { x: number; y: number } {
   return { x: C + radius * Math.cos(angle), y: C + radius * Math.sin(angle) };
 }
 
-// projectedPosition re-ranks the field after adding PIT_LOSS_SECONDS to the
-// player's gap-to-leader, i.e. "if the player pitted now, where would they come
-// out?" Returns the projected place plus the cars immediately ahead/behind at
-// the rejoin point, which is exactly the gap the engineer is hunting for.
-function projectedPosition(state: SessionState, player: CarState) {
-  const projectedGap = player.gap_to_leader + PIT_LOSS_SECONDS;
+// projectedPosition re-ranks the field after adding the pit-loss to the player's
+// gap-to-leader, i.e. "if the player pitted now, where would they come out?"
+// Returns the projected place plus the cars immediately ahead/behind at the rejoin
+// point, which is exactly the gap the engineer is hunting for.
+function projectedPosition(state: SessionState, player: CarState, pitLoss: number) {
+  const projectedGap = player.gap_to_leader + pitLoss;
   // Everyone else keeps their current gap to the leader; the player drops back.
   const others = state.cars
     .filter((c) => c.id !== player.id && c.place > 0)
@@ -52,7 +51,7 @@ function projectedPosition(state: SessionState, player: CarState) {
   return { place, ahead, behind, projectedGap };
 }
 
-export default function TrackCircle({ state }: { state: SessionState }) {
+export default function TrackCircle({ state, pitLossSeconds }: { state: SessionState; pitLossSeconds: number }) {
   const player = playerCar(state);
   const cars = state.cars.filter((c) => c.place > 0 || c.lap_dist_frac > 0);
 
@@ -78,19 +77,19 @@ export default function TrackCircle({ state }: { state: SessionState }) {
         })}
       </svg>
 
-      <PitWindow state={state} player={player} />
+      <PitWindow state={state} player={player} pitLossSeconds={pitLossSeconds} />
     </div>
   );
 }
 
-function PitWindow({ state, player }: { state: SessionState; player?: CarState }) {
+function PitWindow({ state, player, pitLossSeconds }: { state: SessionState; player?: CarState; pitLossSeconds: number }) {
   if (!player) return <div className="strat-pitwindow muted">No player car identified.</div>;
-  const proj = projectedPosition(state, player);
+  const proj = projectedPosition(state, player, pitLossSeconds);
   return (
     <div className="strat-pitwindow">
       <h3>Pit window estimate</h3>
       <p>
-        Pit now (−{PIT_LOSS_SECONDS.toFixed(0)}s): <strong>P{player.place}</strong> → <strong>P{proj.place}</strong>
+        Pit now (−{pitLossSeconds.toFixed(0)}s): <strong>P{player.place}</strong> → <strong>P{proj.place}</strong>
       </p>
       <p className="muted">
         Rejoin between{" "}

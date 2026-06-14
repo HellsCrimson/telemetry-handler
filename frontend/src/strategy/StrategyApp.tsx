@@ -11,15 +11,18 @@ import { useEffect, useState } from "react";
 import { Service } from "../../bindings/telemetry-handler/app";
 import "./strategy.css";
 import { type SessionState } from "./model";
+import { useSettings } from "./useSettings";
 import RacePopups from "./components/RacePopups";
 import TrackCircle from "./components/TrackCircle";
 import WeatherPanel from "./components/WeatherPanel";
 import PitParameters from "./components/PitParameters";
+import UndercutOvercut from "./components/UndercutOvercut";
 import EventTimeline from "./components/EventTimeline";
 import LiveData from "./tabs/LiveData";
 import DriverCoaching from "./tabs/DriverCoaching";
 import CarManagement from "./tabs/CarManagement";
 import DriverVs from "./tabs/DriverVs";
+import StrategySettings from "./tabs/StrategySettings";
 
 // The five main strategy tabs from LMU_PLAN.md plus Settings. Phase 1 implements
 // Live Data and Strategy Calls (the Track Circle lives there); the rest are
@@ -38,6 +41,7 @@ const POLL_MS = 200;
 export default function StrategyApp({ onExit }: { onExit: () => void }) {
   const [activeTab, setActiveTab] = useState<string>("strategy");
   const [state, setState] = useState<SessionState | null>(null);
+  const [settings, updateSettings] = useSettings();
 
   useEffect(() => {
     let mounted = true;
@@ -87,9 +91,10 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
         {available && state && activeTab === "live" && <LiveData state={state} />}
         {available && state && activeTab === "strategy" && (
           <>
-            <TrackCircle state={state} />
+            <TrackCircle state={state} pitLossSeconds={settings.pitLossSeconds} />
             <div className="strat-livedata">
-              <PitParameters state={state} />
+              <PitParameters state={state} safetyLaps={settings.safetyLaps} />
+              <UndercutOvercut state={state} pitLossSeconds={settings.pitLossSeconds} />
               <WeatherPanel weather={state.weather} />
             </div>
           </>
@@ -98,9 +103,7 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
         {available && state && activeTab === "car" && <CarManagement state={state} />}
         {available && state && activeTab === "vs" && <DriverVs state={state} />}
 
-        {activeTab === "settings" && (
-          <p className="muted">Strategy settings will live here. For now, use the Dashboard’s Settings tab.</p>
-        )}
+        {activeTab === "settings" && <StrategySettings settings={settings} update={updateSettings} />}
 
         {available && state && <EventTimeline events={state.events} />}
       </main>

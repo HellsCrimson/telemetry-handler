@@ -10,6 +10,7 @@ import DriveLine from "../components/DriveLine";
 export default function DriverCoaching({ state }: { state: SessionState }) {
   const player = playerCar(state);
   const lap = player?.mini_sectors;
+  const best = player?.best_sectors;
   const live = player?.lap_in_progress;
 
   if (!player) return <p className="muted">Waiting for the player car…</p>;
@@ -24,6 +25,7 @@ export default function DriverCoaching({ state }: { state: SessionState }) {
 
   const totalWear = wearPerSector.reduce((a, b) => a + b, 0);
   const totalFuel = fuelPerSector.reduce((a, b) => a + b, 0);
+  const bestFuel = best ? best.reduce((a, m) => a + m.fuel_used, 0) : 0;
 
   return (
     <div className="strat-coaching">
@@ -34,14 +36,22 @@ export default function DriverCoaching({ state }: { state: SessionState }) {
       </section>
 
       <section className="strat-group">
-        <h3>Fuel usage by mini-sector — last lap (total {totalFuel.toFixed(2)} L)</h3>
+        <h3>
+          Fuel usage by mini-sector — last lap (total {totalFuel.toFixed(2)} L
+          {bestFuel > 0 ? ` · best lap ${bestFuel.toFixed(2)} L` : ""})
+        </h3>
         <MiniSectorBars values={fuelPerSector} color="var(--blue)" format={(v) => `${v.toFixed(3)} L`} highlight={minSpeed} />
         <p className="muted strat-axis-note">Bar = fuel burned. Lift-and-coast zones show as shorter bars on the straights.</p>
       </section>
 
       <section className="strat-group">
-        <h3>Driven line — last lap</h3>
-        <DriveLine path={player.lap_path} />
+        <h3>Driven line — last lap vs your best lap</h3>
+        <DriveLine
+          paths={[
+            { points: player.lap_path, color: "var(--green)", label: "Last lap" },
+            { points: player.best_path, color: "var(--blue)", label: "Best lap" },
+          ]}
+        />
       </section>
 
       {live && live.some((m) => m.time_spent > 0) && (

@@ -303,6 +303,30 @@ func TestDownsample(t *testing.T) {
 	}
 }
 
+func TestLapAccumulatorBestLap(t *testing.T) {
+	var a lapAccumulator
+	// Drive four laps with a single monotonic clock — the lap-number change at each
+	// sector 0 is what rolls the lap over, exactly like real telemetry. Per-sector
+	// time sets each lap's pace: lap 2 (1.5/sector = 30s) is the quickest. The first
+	// lap is excluded from the best reference; the fourth just finalizes lap 3.
+	secTime := []float64{2.0, 1.5, 2.0, 2.0}
+	et := 0.0
+	for lap := 1; lap <= 4; lap++ {
+		st := secTime[lap-1]
+		for s := range numMiniSectors {
+			a.update(sample{lap: int32(lap), frac: float64(s) / numMiniSectors, et: et, speed: 50})
+			et += st
+		}
+	}
+
+	if a.bestLap() == nil {
+		t.Fatal("expected a best lap")
+	}
+	if bt := a.bestLapTime(); bt < 29 || bt > 31 {
+		t.Errorf("bestLapTime = %v, want ~30 (the middle lap)", bt)
+	}
+}
+
 func TestLapAccumulatorNoLapYet(t *testing.T) {
 	var a lapAccumulator
 	a.update(sample{lap: 1, frac: 0.1, fuel: 50, speed: 40})

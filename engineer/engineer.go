@@ -18,17 +18,27 @@ import (
 // (Observe will then fold each frame into rolling per-car aggregates before
 // storing the snapshot).
 type Engineer struct {
-	mu     sync.RWMutex
-	state  SessionState
-	accums map[int32]*lapAccumulator // per-car (by slot ID) mini-sector accumulation
-	events []RaceEvent               // bounded race timeline
-	det    *eventDetector            // frame-to-frame transition tracker
+	mu        sync.RWMutex
+	state     SessionState
+	accums    map[int32]*lapAccumulator // per-car (by slot ID) mini-sector accumulation
+	events    []RaceEvent               // bounded race timeline
+	det       *eventDetector            // frame-to-frame transition tracker
+	compareID int32                     // rival selected for Driver Vs. line capture (-1 = none)
 }
 
 // New returns an idle Engineer. Its Snapshot reports Available=false until the
 // first frame is observed.
 func New() *Engineer {
-	return &Engineer{accums: map[int32]*lapAccumulator{}, det: newEventDetector()}
+	return &Engineer{accums: map[int32]*lapAccumulator{}, det: newEventDetector(), compareID: -1}
+}
+
+// SetCompareCar selects which rival's driven line the engine should buffer for the
+// Driver Vs. line overlay (the player's is always buffered). Pass -1 for none.
+// The buffer fills from the next lap the rival completes.
+func (e *Engineer) SetCompareCar(id int32) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.compareID = id
 }
 
 // Observe folds one decoded LMU frame into the engine's state. It is called once
@@ -44,6 +54,7 @@ func (e *Engineer) Observe(f *wire.Frame) {
 		e.accums = map[int32]*lapAccumulator{}
 		e.events = nil
 		e.det.reset()
+		// keep compareID: the user's selection should survive a brief source gap
 		return
 	}
 	state := mapLMUFrame(f)
@@ -65,13 +76,19 @@ func (e *Engineer) Observe(f *wire.Frame) {
 			a = &lapAccumulator{}
 			e.accums[id] = a
 		}
-		a.trackPath = id == playerID // only the player buffers a path
+		// Buffer the driven line for the player and the selected compare car only.
+		a.trackPath = id == playerID || id == e.compareID
 		a.update(sampleFromVehicle(v, trackLen))
 
 		state.Cars[i].MiniSectors = a.lastLap()
+		state.Cars[i].BestSectors = a.bestLap()
+		state.Cars[i].BestMeasured = a.bestLapTime()
+		if a.trackPath {
+			state.Cars[i].LapPath = a.lastLapPath()
+			state.Cars[i].BestPath = a.bestLapPath()
+		}
 		if id == playerID {
 			state.Cars[i].LapInProgress = a.lapInProgress()
-			state.Cars[i].LapPath = a.lastLapPath()
 		}
 	}
 

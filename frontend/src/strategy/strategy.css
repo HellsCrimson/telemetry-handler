@@ -318,6 +318,39 @@
   stroke-linecap: round;
 }
 
+.strat-line-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.strat-line-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.strat-line-swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+/* Settings fields */
+.strat-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.strat-field > span {
+  font-size: 13px;
+}
+.strat-field input {
+  max-width: 160px;
+}
+
 @media (max-width: 900px) {
   .strat-circle {
     grid-template-columns: 1fr;

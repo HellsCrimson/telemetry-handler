@@ -1,22 +1,27 @@
-// DriveLine draws the player's driven line for the last completed lap, top-down,
-// from the world X/Z path the engine buffers. It's a plain auto-fitted SVG
-// polyline — enough to see the shape of the line and spot where it's scruffy.
-// (Comparing it against a reference/rival line comes in a later iteration.)
+// DriveLine draws one or more driven lines (world X/Z paths) top-down, auto-fitted
+// to a shared frame so they overlay correctly. With one path it's just "your last
+// lap"; with two it powers the comparisons — your last vs your best, or your line
+// vs a rival's. The paths share bounds so the overlay is spatially honest.
 import { type Vec2 } from "../model";
 
 const W = 520;
 const H = 320;
 const PAD = 16;
 
-export default function DriveLine({ path }: { path: Vec2[] | undefined }) {
-  if (!path || path.length < 2) {
+export type NamedPath = { points: Vec2[] | undefined; color: string; label: string };
+
+type DrawnPath = { points: Vec2[]; color: string; label: string };
+
+export default function DriveLine({ paths }: { paths: NamedPath[] }) {
+  const usable: DrawnPath[] = paths.filter((p): p is DrawnPath => !!p.points && p.points.length >= 2);
+  if (usable.length === 0) {
     return <p className="muted">Complete a lap to see the driven line.</p>;
   }
 
-  // Fit the world-space path into the viewport, preserving aspect ratio. World Z
-  // is flipped so "north" is up (screen Y grows downward).
-  const xs = path.map((p) => p.x);
-  const zs = path.map((p) => p.z);
+  // Shared bounds across all paths so overlaid lines line up.
+  const all = usable.flatMap((p) => p.points);
+  const xs = all.map((p) => p.x);
+  const zs = all.map((p) => p.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const spanX = maxX - minX || 1;
@@ -25,17 +30,29 @@ export default function DriveLine({ path }: { path: Vec2[] | undefined }) {
   const offX = (W - spanX * scale) / 2;
   const offZ = (H - spanZ * scale) / 2;
 
-  const points = path
-    .map((p) => {
-      const x = offX + (p.x - minX) * scale;
-      const y = offZ + (maxZ - p.z) * scale; // flip Z
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+  const toPoints = (pts: Vec2[]) =>
+    pts
+      .map((p) => {
+        const x = offX + (p.x - minX) * scale;
+        const y = offZ + (maxZ - p.z) * scale; // flip Z so north is up
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="strat-driveline" role="img" aria-label="Driven line, last lap">
-      <polyline points={points} className="strat-driveline-path" />
-    </svg>
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="strat-driveline" role="img" aria-label="Driven line">
+        {usable.map((p, i) => (
+          <polyline key={i} points={toPoints(p.points)} fill="none" stroke={p.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" opacity={i === 0 ? 1 : 0.6} />
+        ))}
+      </svg>
+      <div className="strat-line-legend">
+        {usable.map((p, i) => (
+          <span key={i} className="strat-line-key">
+            <span className="strat-line-swatch" style={{ background: p.color }} /> {p.label}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }

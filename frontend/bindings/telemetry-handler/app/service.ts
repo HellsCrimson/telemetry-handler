@@ -146,6 +146,15 @@ export function SaveConfig(cfg: config$0.Config): $CancellablePromise<void> {
 }
 
 /**
+ * SetComparisonCar tells the strategy engine which rival to buffer a driven line
+ * for (the Driver Vs. "line" overlay). The frontend calls it when the user picks
+ * a comparison car; -1 clears the selection.
+ */
+export function SetComparisonCar(id: number): $CancellablePromise<void> {
+    return $Call.ByID(3382318191, id);
+}
+
+/**
  * SetOverlayEnabled toggles the user's intent to show the native telemetry
  * overlay. The window itself only appears while the game is sending telemetry;
  * enabling it before the game starts simply arms it to show automatically.

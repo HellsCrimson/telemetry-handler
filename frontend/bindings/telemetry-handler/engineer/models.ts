@@ -134,9 +134,23 @@ export class CarState {
 
     /**
      * LapPath is the driven line (world X/Z) of the last completed lap, for the
-     * Drive Line view. Player car only (it's heavy); nil otherwise.
+     * Drive Line view. Captured for the player and the selected compare car only
+     * (it's heavy); nil otherwise.
      */
     "lap_path": Vec2[];
+
+    /**
+     * Best* hold the fastest FULL lap the engine has seen for this car — the
+     * reference the Coaching and Driver Vs. views compare against. BestSectors is
+     * filled for every car; BestPath only for the player + selected compare car.
+     */
+    "best_sectors": MiniSectorState[];
+    "best_path": Vec2[];
+
+    /**
+     * engine-measured best lap time (s)
+     */
+    "best_measured": number;
 
     /** Creates a new CarState instance. */
     constructor($$source: Partial<CarState> = {}) {
@@ -215,6 +229,15 @@ export class CarState {
         if (!("lap_path" in $$source)) {
             this["lap_path"] = [];
         }
+        if (!("best_sectors" in $$source)) {
+            this["best_sectors"] = [];
+        }
+        if (!("best_path" in $$source)) {
+            this["best_path"] = [];
+        }
+        if (!("best_measured" in $$source)) {
+            this["best_measured"] = 0;
+        }
 
         Object.assign(this, $$source);
     }
@@ -227,6 +250,8 @@ export class CarState {
         const $$createField22_0 = $$createType3;
         const $$createField23_0 = $$createType3;
         const $$createField24_0 = $$createType5;
+        const $$createField25_0 = $$createType3;
+        const $$createField26_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tires" in $$parsedSource) {
             $$parsedSource["tires"] = $$createField20_0($$parsedSource["tires"]);
@@ -239,6 +264,12 @@ export class CarState {
         }
         if ("lap_path" in $$parsedSource) {
             $$parsedSource["lap_path"] = $$createField24_0($$parsedSource["lap_path"]);
+        }
+        if ("best_sectors" in $$parsedSource) {
+            $$parsedSource["best_sectors"] = $$createField25_0($$parsedSource["best_sectors"]);
+        }
+        if ("best_path" in $$parsedSource) {
+            $$parsedSource["best_path"] = $$createField26_0($$parsedSource["best_path"]);
         }
         return new CarState($$parsedSource as Partial<CarState>);
     }

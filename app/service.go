@@ -344,6 +344,13 @@ func (s *Service) GetEngineerState() engineer.SessionState {
 	return s.runtime.EngineerState()
 }
 
+// SetComparisonCar tells the strategy engine which rival to buffer a driven line
+// for (the Driver Vs. "line" overlay). The frontend calls it when the user picks
+// a comparison car; -1 clears the selection.
+func (s *Service) SetComparisonCar(id int32) {
+	s.runtime.SetCompareCar(id)
+}
+
 func (s *Service) ApplyConfig(cfg config.Config) (config.Config, error) {
 	if err := s.runtime.ApplyConfig(cfg); err != nil {
 		return config.Config{}, err
