@@ -21,6 +21,9 @@ import * as analysis$0 from "../analysis/models.js";
 import * as config$0 from "../config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as engineer$0 from "../engineer/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as wire$0 from "../lmu/wire/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -60,6 +63,19 @@ export function GetConfigStatus(): $CancellablePromise<$models.ConfigStatus> {
 }
 
 /**
+ * GetEngineerState returns the Strategy Planner's game-agnostic session model:
+ * every car's position, gaps, fuel, tires and lap times, plus the global flag and
+ * weather state. Available is false until the first LMU frame arrives (and resets
+ * when the source switches to Forza). This is the single method the strategy
+ * frontend polls.
+ */
+export function GetEngineerState(): $CancellablePromise<engineer$0.SessionState> {
+    return $Call.ByID(1967406312).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
  * GetLatestFrame returns the most recent full LMU telemetry frame — every car's
  * complete telemetry (engine, wheels/tires, suspension, forces, aero, damage,
  * electric boost) plus session globals (weather, rules, driving aids). It is
@@ -67,7 +83,7 @@ export function GetConfigStatus(): $CancellablePromise<$models.ConfigStatus> {
  */
 export function GetLatestFrame(): $CancellablePromise<wire$0.Frame | null> {
     return $Call.ByID(4261655122).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType5($result);
     });
 }
 
@@ -77,25 +93,25 @@ export function GetLatestFrame(): $CancellablePromise<wire$0.Frame | null> {
  */
 export function GetMonitorInfo(): $CancellablePromise<$models.MonitorInfo> {
     return $Call.ByID(239629648).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
 export function GetOverlayStatus(): $CancellablePromise<$models.OverlayStatus> {
     return $Call.ByID(2207766068).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType7($result);
     });
 }
 
 export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(3118608443).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
 export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
     return $Call.ByID(3996014961).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType9($result);
     });
 }
 
@@ -105,13 +121,13 @@ export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
  */
 export function ListMonitors(): $CancellablePromise<string[]> {
     return $Call.ByID(4014067021).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType10($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType12($result);
     });
 }
 
@@ -121,7 +137,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType14($result);
     });
 }
 
@@ -140,13 +156,13 @@ export function SetOverlayEnabled(enabled: boolean): $CancellablePromise<void> {
 
 export function StartRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(982748349).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
 export function StopRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(1374983877).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
@@ -154,14 +170,15 @@ export function StopRecording(): $CancellablePromise<recording$0.Status> {
 const $$createType0 = analysis$0.Report.createFrom;
 const $$createType1 = config$0.Config.createFrom;
 const $$createType2 = $models.ConfigStatus.createFrom;
-const $$createType3 = wire$0.Frame.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = $models.MonitorInfo.createFrom;
-const $$createType6 = $models.OverlayStatus.createFrom;
-const $$createType7 = recording$0.Status.createFrom;
-const $$createType8 = $models.TelemetrySnapshot.createFrom;
-const $$createType9 = $Create.Array($Create.Any);
-const $$createType10 = recording$0.Info.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = $models.ReplaySample.createFrom;
-const $$createType13 = $Create.Array($$createType12);
+const $$createType3 = engineer$0.SessionState.createFrom;
+const $$createType4 = wire$0.Frame.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $models.MonitorInfo.createFrom;
+const $$createType7 = $models.OverlayStatus.createFrom;
+const $$createType8 = recording$0.Status.createFrom;
+const $$createType9 = $models.TelemetrySnapshot.createFrom;
+const $$createType10 = $Create.Array($Create.Any);
+const $$createType11 = recording$0.Info.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = $models.ReplaySample.createFrom;
+const $$createType14 = $Create.Array($$createType13);

@@ -8,6 +8,7 @@ import (
 
 	"telemetry-handler/analysis"
 	"telemetry-handler/config"
+	"telemetry-handler/engineer"
 	"telemetry-handler/forza"
 	"telemetry-handler/lmu/wire"
 	"telemetry-handler/moza"
@@ -67,7 +68,8 @@ type Runtime struct {
 	seenAt    time.Time
 	source    string
 	meta      TelemetryMeta
-	frame     *wire.Frame // full LMU frame (all cars + globals); nil for Forza
+	frame     *wire.Frame        // full LMU frame (all cars + globals); nil for Forza
+	engineer  *engineer.Engineer // live strategy engine (multi-car SessionState)
 	moza      *moza.Driver
 	recorder  *recording.Manager
 
@@ -82,7 +84,7 @@ type Runtime struct {
 }
 
 func NewRuntime(cfg config.Config, cfgPath string, recorder *recording.Manager) *Runtime {
-	return &Runtime{cfg: cfg, cfgPath: cfgPath, recorder: recorder}
+	return &Runtime{cfg: cfg, cfgPath: cfgPath, recorder: recorder, engineer: engineer.New()}
 }
 
 // SetLoadError records that the config file at path failed to load (msg is the
@@ -149,6 +151,20 @@ func (r *Runtime) LatestFrame() *wire.Frame {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.frame
+}
+
+// ObserveFrame feeds one decoded LMU frame to the strategy engine. The receiver
+// calls it once per frame (alongside SetFrame), so the engine sees telemetry at
+// the sidecar's full rate — necessary for the per-corner accumulation it gains in
+// a later phase. The engineer has its own lock, so this needs no runtime lock.
+func (r *Runtime) ObserveFrame(frame *wire.Frame) {
+	r.engineer.Observe(frame)
+}
+
+// EngineerState returns the strategy engine's latest game-agnostic SessionState
+// for the Strategy Planner frontend.
+func (r *Runtime) EngineerState() engineer.SessionState {
+	return r.engineer.Snapshot()
 }
 
 func (r *Runtime) PrintEvery() time.Duration {

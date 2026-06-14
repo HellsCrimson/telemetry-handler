@@ -13,6 +13,7 @@ import (
 
 	"telemetry-handler/analysis"
 	"telemetry-handler/config"
+	"telemetry-handler/engineer"
 	"telemetry-handler/forza"
 	"telemetry-handler/lmu"
 	"telemetry-handler/lmu/wire"
@@ -262,6 +263,7 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 				return nil
 			}
 			s.runtime.SetFrame(&frame)
+			s.runtime.ObserveFrame(&frame)
 			return apply(frameToTelemetry(&frame), "lmu", frameToMeta(&frame))
 		}
 
@@ -275,6 +277,7 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 				return err
 			}
 			s.runtime.SetFrame(nil)
+			s.runtime.ObserveFrame(nil)
 			return apply(lmuToTelemetry(p), "lmu", lmuToMeta(p))
 		}
 
@@ -293,6 +296,7 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 			return err
 		}
 		s.runtime.SetFrame(nil)
+		s.runtime.ObserveFrame(nil)
 		return apply(telemetry, "forza", TelemetryMeta{})
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -329,6 +333,15 @@ func (s *Service) GetTelemetry() TelemetrySnapshot {
 // nil when the active source is Forza or no LMU frame has arrived yet.
 func (s *Service) GetLatestFrame() *wire.Frame {
 	return s.runtime.LatestFrame()
+}
+
+// GetEngineerState returns the Strategy Planner's game-agnostic session model:
+// every car's position, gaps, fuel, tires and lap times, plus the global flag and
+// weather state. Available is false until the first LMU frame arrives (and resets
+// when the source switches to Forza). This is the single method the strategy
+// frontend polls.
+func (s *Service) GetEngineerState() engineer.SessionState {
+	return s.runtime.EngineerState()
 }
 
 func (s *Service) ApplyConfig(cfg config.Config) (config.Config, error) {

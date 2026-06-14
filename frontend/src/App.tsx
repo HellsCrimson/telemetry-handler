@@ -20,6 +20,7 @@ import {
 import Chart, { type Highlight } from "./Chart";
 import { TrackVisualizer } from "./TrackVisualizer";
 import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
+import StrategyApp from "./strategy/StrategyApp";
 
 const HISTORY_MS = 120000;
 
@@ -42,6 +43,10 @@ const TABS = [
 ] as const;
 
 export default function App() {
+  // mode selects the top-level interface: the existing single-car dashboard, or
+  // the multi-car Strategy Planner. It defaults to "dashboard" so nothing changes
+  // for existing users; the planner is opt-in via the header toggle.
+  const [mode, setMode] = useState<"dashboard" | "strategy">("dashboard");
   const [activeTab, setActiveTab] = useState<string>("info");
   const [config, setConfig] = useState<any>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -442,6 +447,13 @@ export default function App() {
 
   const t = snapshot?.telemetry;
 
+  // Strategy Planner is a distinct, self-contained interface (its own polling and
+  // tabs). Render it instead of the dashboard when selected; all dashboard hooks
+  // above have already run, so this conditional return is safe.
+  if (mode === "strategy") {
+    return <StrategyApp onExit={() => setMode("dashboard")} />;
+  }
+
   return (
     <>
       <header className="topbar">
@@ -450,6 +462,7 @@ export default function App() {
           <p id="status" data-level={statusLevel}>{statusText}</p>
         </div>
         <div className="actions">
+          <button className="secondary" onClick={() => setMode("strategy")}>Strategy Planner</button>
           <button onClick={applyConfig}>Apply</button>
           <button onClick={saveConfig}>Save</button>
         </div>
