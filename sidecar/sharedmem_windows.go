@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"syscall"
 	"unsafe"
@@ -17,7 +18,10 @@ var (
 	procVirtualQuery    = kernel32.NewProc("VirtualQuery")
 )
 
-const fileMapRead = 0x0004
+const (
+	fileMapRead  = 0x0004
+	fileMapWrite = 0x0002
+)
 
 // memoryBasicInformation mirrors the Win32 MEMORY_BASIC_INFORMATION (x64
 // layout) so VirtualQuery can report how large the mapped view is.
@@ -56,6 +60,45 @@ func openMapping(name string) (*mapping, error) {
 		return nil, fmt.Errorf("MapViewOfFile(%q): %v", name, callErr)
 	}
 	return &mapping{handle: h, view: view, size: viewSize(view)}, nil
+}
+
+// openMappingRW opens a named section for read AND write, used for the
+// PluginControl input buffer the sidecar writes to request buffer subscription.
+func openMappingRW(name string) (*mapping, error) {
+	namePtr, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return nil, err
+	}
+	access := uintptr(fileMapRead | fileMapWrite)
+	h, _, callErr := procOpenFileMapping.Call(access, 0, uintptr(unsafe.Pointer(namePtr)))
+	if h == 0 {
+		return nil, fmt.Errorf("OpenFileMapping(%q, rw): %v", name, callErr)
+	}
+	view, _, callErr := procMapViewOfFile.Call(h, access, 0, 0, 0)
+	if view == 0 {
+		procCloseHandle.Call(h)
+		return nil, fmt.Errorf("MapViewOfFile(%q, rw): %v", name, callErr)
+	}
+	return &mapping{handle: h, view: view, size: viewSize(view)}, nil
+}
+
+// readUint32 reads a little-endian uint32 at off (0 if out of range).
+func (m *mapping) readUint32(off int) uint32 {
+	if off < 0 || (m.size > 0 && uintptr(off+4) > m.size) {
+		return 0
+	}
+	src := unsafe.Slice((*byte)(unsafe.Pointer(m.view)), off+4)
+	return binary.LittleEndian.Uint32(src[off:])
+}
+
+// writeUint32 writes a little-endian uint32 at off into the mapped view (a
+// no-op when out of range, so a stride mismatch can't fault).
+func (m *mapping) writeUint32(off int, v uint32) {
+	if off < 0 || (m.size > 0 && uintptr(off+4) > m.size) {
+		return
+	}
+	dst := unsafe.Slice((*byte)(unsafe.Pointer(m.view)), off+4)
+	binary.LittleEndian.PutUint32(dst[off:], v)
 }
 
 // viewSize returns the byte size of the mapped region at addr (0 if unknown).

@@ -2,10 +2,99 @@ package app
 
 import (
 	"hash/fnv"
+	"math"
 
 	"telemetry-handler/forza"
 	"telemetry-handler/lmu"
+	"telemetry-handler/lmu/wire"
 )
+
+// kelvinToCelsius converts an rF2 tire temperature (Kelvin) to Celsius, leaving
+// a zero (unavailable) reading as zero rather than -273.
+func kelvinToCelsius(k float64) float32 {
+	if k <= 0 {
+		return 0
+	}
+	return float32(k - 273.15)
+}
+
+// avg3 averages a 3-sample tire temperature array (left/center/right).
+func avg3(t [3]float64) float64 {
+	return (t[0] + t[1] + t[2]) / 3
+}
+
+// frameToTelemetry maps the player's car from a decoded wire.Frame into the
+// app's forza.Telemetry model. It populates the same fields as the legacy JSON
+// adapter (rpm/speed/gear/pedals/steer/fuel) plus the richer data the binary
+// frame now carries (acceleration, velocity, world position, tire temps,
+// engine torque, turbo boost) so the dashboard's existing charts light up for
+// LMU. Slip/suspension are left zero: Forza's analysis detectors are tuned to
+// Forza's slip-ratio units, which don't translate from rF2.
+func frameToTelemetry(f *wire.Frame) forza.Telemetry {
+	p, ok := f.Player()
+	if !ok {
+		// No identified player car: fall back to the first vehicle if any.
+		if len(f.Vehicles) == 0 {
+			return forza.Telemetry{IsRaceOn: 1}
+		}
+		p = f.Vehicles[0]
+	}
+	vt := p.Telemetry
+	speed := math.Sqrt(vt.LocalVel.X*vt.LocalVel.X + vt.LocalVel.Y*vt.LocalVel.Y + vt.LocalVel.Z*vt.LocalVel.Z)
+	return forza.Telemetry{
+		IsRaceOn:         1,
+		CurrentEngineRpm: float32(vt.EngineRPM),
+		EngineMaxRpm:     float32(vt.EngineMaxRPM),
+		Speed:            float32(speed),
+		Gear:             lmuGear(vt.Gear),
+		Accel:            unitToByte(vt.UnfilteredThrottle),
+		Brake:            unitToByte(vt.UnfilteredBrake),
+		Clutch:           unitToByte(vt.UnfilteredClutch),
+		Steer:            unitToSteer(vt.UnfilteredSteering),
+		Fuel:             float32(vt.Fuel),
+		LapNumber:        uint16(max(vt.LapNumber, 0)),
+		CarOrdinal:       carOrdinal(wire.GoString(vt.VehicleName[:])),
+
+		AccelerationX: float32(vt.LocalAccel.X),
+		AccelerationY: float32(vt.LocalAccel.Y),
+		AccelerationZ: float32(vt.LocalAccel.Z),
+		VelocityX:     float32(vt.LocalVel.X),
+		VelocityY:     float32(vt.LocalVel.Y),
+		VelocityZ:     float32(vt.LocalVel.Z),
+		PositionX:     float32(vt.Pos.X),
+		PositionY:     float32(vt.Pos.Y),
+		PositionZ:     float32(vt.Pos.Z),
+
+		TireTempFrontLeft:  kelvinToCelsius(avg3(vt.Wheels[0].Temperature)),
+		TireTempFrontRight: kelvinToCelsius(avg3(vt.Wheels[1].Temperature)),
+		TireTempRearLeft:   kelvinToCelsius(avg3(vt.Wheels[2].Temperature)),
+		TireTempRearRight:  kelvinToCelsius(avg3(vt.Wheels[3].Temperature)),
+
+		Torque: float32(vt.EngineTorque),
+		Boost:  float32(vt.TurboBoostPressure),
+	}
+}
+
+// frameToMeta extracts the descriptive session info from a decoded frame for
+// the dashboard's Info tab.
+func frameToMeta(f *wire.Frame) TelemetryMeta {
+	car, track := "", wire.GoString(f.ScoringInfo.TrackName[:])
+	steerRange := 0.0
+	if p, ok := f.Player(); ok {
+		car = wire.GoString(p.Telemetry.VehicleName[:])
+		steerRange = float64(p.Telemetry.PhysicalSteeringWheelRange)
+		if track == "" {
+			track = wire.GoString(p.Telemetry.TrackName[:])
+		}
+	}
+	return TelemetryMeta{
+		Car:              car,
+		Track:            track,
+		SessionTime:      f.ScoringInfo.CurrentET,
+		NumVehicles:      len(f.Vehicles),
+		SteeringRangeDeg: steerRange,
+	}
+}
 
 // lmuNeutralGear is the Forza gear value emitted for LMU's neutral. The overlay
 // infers neutral as "the highest gear value seen" (Forza reports neutral as

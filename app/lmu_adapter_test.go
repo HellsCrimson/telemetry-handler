@@ -1,9 +1,11 @@
 package app
 
 import (
+	"math"
 	"testing"
 
 	"telemetry-handler/lmu"
+	"telemetry-handler/lmu/wire"
 )
 
 func TestLMUAdapterMapping(t *testing.T) {
@@ -47,6 +49,117 @@ func TestLMUAdapterMapping(t *testing.T) {
 	}
 	if tel.CarOrdinal == 0 {
 		t.Error("expected non-zero CarOrdinal from vehicle name")
+	}
+}
+
+func TestFrameToTelemetryMapsPlayer(t *testing.T) {
+	var player wire.VehicleTelemetry
+	player.ID = 42
+	copy(player.VehicleName[:], "GT3 #91")
+	player.EngineRPM = 7500
+	player.EngineMaxRPM = 9000
+	player.Gear = 3
+	player.UnfilteredThrottle = 1
+	player.UnfilteredBrake = 0.5
+	player.UnfilteredSteering = -0.5
+	player.Fuel = 63.2
+	player.LapNumber = 4
+	player.PhysicalSteeringWheelRange = 540
+	player.LocalVel = wire.Vec3{X: 30, Y: 0, Z: 40} // |v| = 50
+	player.LocalAccel = wire.Vec3{X: 1, Y: 2, Z: 3}
+	player.Pos = wire.Vec3{X: 100, Y: 5, Z: 200}
+	player.EngineTorque = 480
+	// Front-left tire at 353.15 K -> 80 C average.
+	player.Wheels[0].Temperature = [3]float64{353.15, 353.15, 353.15}
+
+	other := wire.VehicleTelemetry{ID: 7}
+	copy(other.VehicleName[:], "AI Car")
+
+	f := wire.Frame{
+		PlayerID:  42,
+		PlayerIdx: 1,
+		Vehicles: []wire.Vehicle{
+			{Telemetry: other},
+			{Telemetry: player},
+		},
+	}
+	copy(f.ScoringInfo.TrackName[:], "Spa")
+	f.ScoringInfo.CurrentET = 123.5
+
+	tel := frameToTelemetry(&f)
+	if tel.IsRaceOn != 1 || tel.CurrentEngineRpm != 7500 || tel.EngineMaxRpm != 9000 {
+		t.Errorf("engine fields wrong: %+v", tel)
+	}
+	if math.Abs(float64(tel.Speed)-50) > 1e-3 {
+		t.Errorf("speed = %v, want 50 (|LocalVel|)", tel.Speed)
+	}
+	if tel.Accel != 255 || tel.Brake != 127 || tel.Steer != -63 {
+		t.Errorf("pedals/steer wrong: accel=%d brake=%d steer=%d", tel.Accel, tel.Brake, tel.Steer)
+	}
+	if tel.AccelerationX != 1 || tel.AccelerationZ != 3 || tel.PositionX != 100 || tel.PositionZ != 200 {
+		t.Errorf("accel/pos vectors wrong: %+v", tel)
+	}
+	if math.Abs(float64(tel.TireTempFrontLeft)-80) > 1e-2 {
+		t.Errorf("FL tire temp = %v, want ~80C", tel.TireTempFrontLeft)
+	}
+	if tel.Torque != 480 {
+		t.Errorf("torque = %v, want 480", tel.Torque)
+	}
+
+	meta := frameToMeta(&f)
+	if meta.Car != "GT3 #91" || meta.Track != "Spa" || meta.NumVehicles != 2 || meta.SteeringRangeDeg != 540 {
+		t.Errorf("meta wrong: %+v", meta)
+	}
+	if math.Abs(meta.SessionTime-123.5) > 1e-6 {
+		t.Errorf("session time = %v, want 123.5", meta.SessionTime)
+	}
+}
+
+// TestFrameRoundTripThroughTransport simulates the full live path: marshal a
+// frame, chunk it, feed the chunks through the reassembler, decode, and confirm
+// the player car survives end to end.
+func TestFrameRoundTripThroughTransport(t *testing.T) {
+	var f wire.Frame
+	f.PlayerIdx = 0
+	f.PlayerID = 1
+	for i := range 30 {
+		var vt wire.VehicleTelemetry
+		vt.ID = int32(i + 1)
+		copy(vt.VehicleName[:], "car")
+		vt.EngineRPM = float64(1000 * i)
+		f.Vehicles = append(f.Vehicles, wire.Vehicle{Telemetry: vt})
+	}
+	copy(f.Vehicles[0].Telemetry.VehicleName[:], "Player")
+
+	payload, err := wire.MarshalFrame(&f)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	chunks := wire.Chunk(payload, f.Seq, 4096)
+	var re wire.Reassembler
+	var got wire.Frame
+	done := false
+	for _, c := range chunks {
+		p, ok, err := re.Add(c)
+		if err != nil {
+			t.Fatalf("reassemble: %v", err)
+		}
+		if ok {
+			got, err = wire.UnmarshalFrame(p)
+			if err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			done = true
+		}
+	}
+	if !done {
+		t.Fatal("frame never reassembled")
+	}
+	if len(got.Vehicles) != 30 {
+		t.Fatalf("got %d vehicles, want 30", len(got.Vehicles))
+	}
+	if tel := frameToTelemetry(&got); tel.CarOrdinal == 0 {
+		t.Error("expected player CarOrdinal from name")
 	}
 }
 

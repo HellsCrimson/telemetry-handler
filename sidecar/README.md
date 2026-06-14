@@ -1,8 +1,16 @@
 # lmu-bridge (telemetry sidecar)
 
-Reads Le Mans Ultimate / rFactor 2 telemetry from the **rF2 Shared Memory Map
-Plugin** and re-emits it as a small JSON packet over UDP, so the native
-telemetry-handler app can consume it through its existing UDP receiver.
+Reads Le Mans Ultimate / rFactor 2 telemetry from **all** of the **rF2 Shared
+Memory Map Plugin**'s buffers and re-emits it as a chunked binary frame over UDP,
+so the native telemetry-handler app can consume it through its existing UDP
+receiver.
+
+Each frame carries **full telemetry for every car** (engine, per-wheel
+tires/suspension/forces, aero, damage, electric boost, …), the **full per-car
+scoring** (positions, lap/sector times, gaps, pit state, flags, names) and the
+**session globals** (weather, track rules / safety car, driving aids, pit speed
+limit). A full grid exceeds the 64KB UDP datagram limit, so a frame is split
+into chunked datagrams the app reassembles (see `telemetry-handler/lmu/wire`).
 
 LMU has no native UDP telemetry. On Linux the game runs under Proton/Wine and
 its shared memory lives **inside the Wine prefix**, invisible to native Linux
@@ -16,7 +24,20 @@ Wine→host boundary normally.
    `Le Mans Ultimate/Plugins/`.
 2. Enable it in `Le Mans Ultimate/UserData/player/CustomPluginVariables.JSON`
    (`"Enabled": 1` for the plugin entry).
-3. Launch LMU and load into a session so the plugin starts publishing.
+3. **Subscribe to all buffers.** The plugin leaves **Graphics (bit 32)** and
+   **Weather (bit 128)** *unsubscribed by default*, so those buffers never
+   update until you subscribe. Set, in the same plugin entry:
+
+   ```json
+   "UnsubscribedBuffersMask": 0
+   ```
+
+   The bridge **also** requests this at runtime by writing the `PluginControl`
+   buffer (best-effort; only works when the plugin has `PluginControlInput`
+   enabled), and logs a warning while Graphics/Weather remain unsubscribed — but
+   the static config above is the reliable fix. Pass `-no-subscribe` to skip the
+   runtime write.
+4. Launch LMU and load into a session so the plugin starts publishing.
 
 ## Build
 
@@ -24,69 +45,75 @@ Wine→host boundary normally.
 GOOS=windows GOARCH=amd64 go build -o lmu-bridge.exe ./sidecar
 ```
 
-(`go build -o lmu-bridge-linux ./sidecar` also compiles on Linux, but the Linux
-build is a stub that just errors — it can't see the prefix's shared memory.)
+(`go build ./sidecar` also compiles on Linux, but the Linux build is a stub that
+just errors — it can't see the prefix's shared memory.)
 
-## Smoke test against netcat (no main app needed)
+## Smoke test
 
-On the Linux host, listen:
-
-```bash
-nc -u -l 20440
-```
-
-Then run the bridge under the game's prefix:
+The wire is **binary** now (no longer human-readable JSON), so `nc` will show
+raw bytes. The simplest check is to run the bridge with `-v` and watch its
+per-frame summary, or run the main app and watch the dashboard:
 
 ```bash
 WINEPREFIX=/path/to/lmu/prefix wine lmu-bridge.exe -addr 127.0.0.1:20440 -v
 ```
 
-With LMU running you should see one JSON packet per tick, e.g.:
+With LMU running you should see one summary line per frame, e.g.:
 
-```json
-{"source":"lmu","seq":42,"version":1234,"num_vehicles":1,"vehicle_name":"...","track_name":"...","elapsed_time":12.3,"lap_number":1,"gear":3,"engine_rpm":7200,"speed_ms":58.4,"throttle":0.9,"brake":0,"steering":-0.1,"clutch":0}
+```
+seq=1234 cars=20 playerIdx=7 car="Ferrari 499P" payload=37896B chunks=1
 ```
 
-The bridge also logs a one-line summary to stdout (`-v` logs every packet;
-without it, once per second).
+`-v` logs every frame; without it, once per second.
 
 ## Flags
 
-| flag            | default              | meaning                                          |
-|-----------------|----------------------|--------------------------------------------------|
-| `-addr`         | `127.0.0.1:20440`    | UDP destination `host:port`                      |
-| `-hz`           | `50`                 | poll/send rate (rF2 updates at ~50Hz)            |
-| `-map`          | `$rFactor2SMMP_Telemetry$` | telemetry shared-memory object name        |
-| `-scoring-map`  | `$rFactor2SMMP_Scoring$`   | scoring buffer (used to find the player)   |
-| `-vehicle`      | `-1`                 | force a telemetry vehicle index (`-1` = auto)    |
-| `-v`            | off                  | log every packet                                 |
-| `-dump`         | `0`                  | hex-dump N bytes of the telemetry buffer once    |
-| `-dump-scoring` | `0`                  | hex-dump N bytes of the scoring buffer once      |
+| flag             | default              | meaning                                              |
+|------------------|----------------------|------------------------------------------------------|
+| `-addr`          | `127.0.0.1:20440`    | UDP destination `host:port`                          |
+| `-hz`            | `50`                 | poll/send rate (rF2 updates at ~50Hz)                |
+| `-vehicle`       | `-1`                 | force a telemetry vehicle index (`-1` = auto)        |
+| `-chunk`         | `0`                  | max UDP payload bytes per chunk (`0` = ~60000)       |
+| `-no-subscribe`  | off                  | don't write PluginControl to enable Graphics/Weather |
+| `-v`             | off                  | log every frame                                      |
+| `-dump`          | `0`                  | hex-dump N bytes of the telemetry buffer once        |
+| `-dump-scoring`  | `0`                  | hex-dump N bytes of the scoring buffer once          |
+| `-dump-extended` | `0`                  | hex-dump N bytes of the extended buffer once         |
+| `-logfile`       | `""`                 | also tee logs to a file (Windows path under Wine)    |
 
-The per-packet log line includes `idx=` (the chosen telemetry vehicle index) and
-`pid=` (the player's slot id from scoring) so you can confirm it locked onto your
-car. If it ever picks the wrong car, force it with `-vehicle N`, or capture
-`-dump-scoring 4096` / `-dump 2048` and check the offset constants.
+The shared-memory object names are the plugin defaults (`$rFactor2SMMP_*$`) and
+are no longer configurable via flags.
 
-## Notes / next steps
+The per-frame log includes `playerIdx=` (the chosen vehicle) so you can confirm
+it locked onto your car. If it picks the wrong car, force it with `-vehicle N`,
+or capture `-dump-scoring 4096` / `-dump 2048` and check the offsets.
 
-- **Wine UDP:** the bridge sends via raw winsock `socket()`/`sendto()` instead
-  of Go's `net` package. Go's UDP setup issues a `SIO_UDP_NETRESET` ioctl that
-  Wine doesn't implement, which makes `net.Dial("udp")` fail under Wine/Proton
-  with `wsaioctl: winapi error #10045` (WSAEOPNOTSUPP). See `udp_windows.go`.
-- **Tear-free reads:** each poll snapshots the buffer and accepts it only when
-  the SMMP `mVersionUpdateBegin == mVersionUpdateEnd` counters match.
-- **Player car:** the bridge reads the *Scoring* buffer (`$rFactor2SMMP_Scoring$`)
-  to find the local player's vehicle (`mControl==0`/`mIsPlayer`), takes its slot
-  `mID`, and locates the matching car in the *Telemetry* buffer by `mID` (the two
-  arrays are not guaranteed to be in the same order). With AI cars present the
-  player is often **not** index 0, which is why reading `mVehicles[0]` blindly
-  surfaced another car's inputs. Anything unexpected (scoring missing, no player
-  found, id not in telemetry, or a stride mismatch) falls back to `mVehicles[0]`,
-  so the worst case is the old behaviour, never garbage. Override with `-vehicle`.
-- **Wire format:** JSON on purpose (readable, trivial to parse/evolve). The main
-  app gets one new parser branch; the UDP transport stays unchanged. Swap to a
-  binary encoding later only if the rate ever justifies it.
+## Notes / internals
+
+- **Wire format:** binary, defined once in `telemetry-handler/lmu/wire` and
+  shared by the sidecar (encoder) and the app (decoder), so the two ends can't
+  drift. The per-vehicle structs mirror the rF2 `pack(4)` C structs
+  field-for-field (those have no implicit padding — alignment gaps are explicit
+  expansion arrays — so Go's tightly-packed `encoding/binary` reads them
+  byte-for-byte). Struct sizes (1888/584/548/260) are asserted in tests.
+- **Chunking:** `wire.Chunk` splits a frame into datagrams each prefixed with a
+  24-byte envelope (`LMU2` magic, frame seq, chunk index/count, total length,
+  offset). `wire.Reassembler` stitches them back; a newer frame supersedes an
+  incomplete older one.
+- **Buffers read:** Telemetry, Scoring, Rules, Weather, Graphics, ForceFeedback,
+  PitInfo, Extended. Telemetry is required; the rest are best-effort (a missing
+  optional buffer just leaves its section zero-valued).
+- **Tear-free reads:** the versioned buffers (Telemetry/Scoring/Rules) are
+  accepted only when `mVersionUpdateBegin == mVersionUpdateEnd`.
+- **Player car:** read from the *Scoring* buffer (`mControl==0`/`mIsPlayer`); its
+  slot `mID` is matched against the *Telemetry* buffer (the two arrays aren't
+  necessarily in the same order). Anything unexpected falls back to vehicle 0.
+- **Wine UDP:** the bridge sends via raw winsock `WSASendTo` instead of Go's
+  `net` package, which fails under Wine on a `SIO_UDP_NETRESET` ioctl. See
+  `udp_windows.go`.
 - **Struct offsets** are derived from `rF2State.h` (TheIronWolfModding); `long`
-  is 32-bit under MSVC. If a future plugin build changes the layout, fix the
-  offset constants in `main.go`.
+  is 32-bit and pointers/`ULONGLONG` align to 4 under MSVC `pack(4)`. If a future
+  plugin build changes the layout, fix the mirror structs in `lmu/wire` and the
+  prefix/offset constants in `rf2.go`/`rf2_extended.go` (the size-assertion tests
+  will flag a mismatch).
+```

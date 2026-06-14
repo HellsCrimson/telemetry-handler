@@ -20,5 +20,9 @@ func openMapping(name string) (*mapping, error) {
 		runtime.GOOS)
 }
 
-func (m *mapping) snapshot(buf []byte) {}
-func (m *mapping) close()              {}
+func openMappingRW(name string) (*mapping, error) { return openMapping(name) }
+
+func (m *mapping) snapshot(buf []byte)           {}
+func (m *mapping) close()                        {}
+func (m *mapping) readUint32(off int) uint32     { return 0 }
+func (m *mapping) writeUint32(off int, v uint32) {}

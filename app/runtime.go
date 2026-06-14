@@ -9,6 +9,7 @@ import (
 	"telemetry-handler/analysis"
 	"telemetry-handler/config"
 	"telemetry-handler/forza"
+	"telemetry-handler/lmu/wire"
 	"telemetry-handler/moza"
 	"telemetry-handler/recording"
 )
@@ -66,6 +67,7 @@ type Runtime struct {
 	seenAt    time.Time
 	source    string
 	meta      TelemetryMeta
+	frame     *wire.Frame // full LMU frame (all cars + globals); nil for Forza
 	moza      *moza.Driver
 	recorder  *recording.Manager
 
@@ -129,6 +131,24 @@ func (r *Runtime) SetTelemetry(telemetry forza.Telemetry, source string, meta Te
 	r.seenAt = time.Now()
 	r.source = source
 	r.meta = meta
+}
+
+// SetFrame stores (or clears, with nil) the full LMU telemetry frame — every
+// car's complete telemetry plus session globals. The mapped player car still
+// flows through SetTelemetry for the overlay/MOZA/dashboard; this retains the
+// rest so it is available to the frontend via GetLatestFrame.
+func (r *Runtime) SetFrame(frame *wire.Frame) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.frame = frame
+}
+
+// LatestFrame returns the most recent full LMU frame, or nil when the current
+// source is Forza or no LMU frame has arrived.
+func (r *Runtime) LatestFrame() *wire.Frame {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.frame
 }
 
 func (r *Runtime) PrintEvery() time.Duration {
@@ -250,9 +270,30 @@ func (r *Runtime) ReplayRecording(name string, maxSamples int) ([]ReplaySample, 
 	}
 
 	samples := make([]ReplaySample, 0, len(rawSamples))
+	var re wire.Reassembler
 	for _, raw := range rawSamples {
-		// Recordings store raw packets from either game; decode each by content so
-		// Forza and LMU sessions both replay through the same path.
+		// New-format LMU recordings store chunked binary frames; feed the chunks
+		// through the same reassembler the live receiver uses and decode a frame
+		// once it completes.
+		if wire.IsEnvelope(raw.Packet) {
+			payload, complete, err := re.Add(raw.Packet)
+			if err != nil || !complete {
+				continue
+			}
+			frame, err := wire.UnmarshalFrame(payload)
+			if err != nil {
+				continue
+			}
+			samples = append(samples, ReplaySample{
+				OffsetMS:  raw.OffsetMS,
+				Telemetry: frameToTelemetry(&frame),
+				Source:    "lmu",
+				Meta:      frameToMeta(&frame),
+			})
+			continue
+		}
+		// Forza (binary) and legacy LMU (JSON) packets are whole; decode by content
+		// so older recordings of either game still replay through the same path.
 		telemetry, source, meta, err := decodePacket(raw.Packet)
 		if err != nil {
 			// Skip a frame we can't decode rather than failing the whole replay;

@@ -21,6 +21,9 @@ import * as analysis$0 from "../analysis/models.js";
 import * as config$0 from "../config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as wire$0 from "../lmu/wire/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as recording$0 from "../recording/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -57,30 +60,42 @@ export function GetConfigStatus(): $CancellablePromise<$models.ConfigStatus> {
 }
 
 /**
+ * GetLatestFrame returns the most recent full LMU telemetry frame — every car's
+ * complete telemetry (engine, wheels/tires, suspension, forces, aero, damage,
+ * electric boost) plus session globals (weather, rules, driving aids). It is
+ * nil when the active source is Forza or no LMU frame has arrived yet.
+ */
+export function GetLatestFrame(): $CancellablePromise<wire$0.Frame | null> {
+    return $Call.ByID(4261655122).then(($result: any) => {
+        return $$createType4($result);
+    });
+}
+
+/**
  * GetMonitorInfo reports the logical resolution of the monitor the overlay will
  * appear on, used by the dashboard placement preview.
  */
 export function GetMonitorInfo(): $CancellablePromise<$models.MonitorInfo> {
     return $Call.ByID(239629648).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
 export function GetOverlayStatus(): $CancellablePromise<$models.OverlayStatus> {
     return $Call.ByID(2207766068).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType6($result);
     });
 }
 
 export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(3118608443).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
 export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
     return $Call.ByID(3996014961).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType8($result);
     });
 }
 
@@ -90,13 +105,13 @@ export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
  */
 export function ListMonitors(): $CancellablePromise<string[]> {
     return $Call.ByID(4014067021).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType11($result);
     });
 }
 
@@ -106,7 +121,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType13($result);
     });
 }
 
@@ -125,13 +140,13 @@ export function SetOverlayEnabled(enabled: boolean): $CancellablePromise<void> {
 
 export function StartRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(982748349).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
 export function StopRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(1374983877).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -139,12 +154,14 @@ export function StopRecording(): $CancellablePromise<recording$0.Status> {
 const $$createType0 = analysis$0.Report.createFrom;
 const $$createType1 = config$0.Config.createFrom;
 const $$createType2 = $models.ConfigStatus.createFrom;
-const $$createType3 = $models.MonitorInfo.createFrom;
-const $$createType4 = $models.OverlayStatus.createFrom;
-const $$createType5 = recording$0.Status.createFrom;
-const $$createType6 = $models.TelemetrySnapshot.createFrom;
-const $$createType7 = $Create.Array($Create.Any);
-const $$createType8 = recording$0.Info.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = $models.ReplaySample.createFrom;
+const $$createType3 = wire$0.Frame.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = $models.MonitorInfo.createFrom;
+const $$createType6 = $models.OverlayStatus.createFrom;
+const $$createType7 = recording$0.Status.createFrom;
+const $$createType8 = $models.TelemetrySnapshot.createFrom;
+const $$createType9 = $Create.Array($Create.Any);
+const $$createType10 = recording$0.Info.createFrom;
 const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = $models.ReplaySample.createFrom;
+const $$createType13 = $Create.Array($$createType12);

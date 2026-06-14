@@ -15,6 +15,7 @@ import (
 	"telemetry-handler/config"
 	"telemetry-handler/forza"
 	"telemetry-handler/lmu"
+	"telemetry-handler/lmu/wire"
 	"telemetry-handler/output"
 	"telemetry-handler/overlay"
 	"telemetry-handler/receiver"
@@ -231,21 +232,49 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 		return nil
 	}
 
+	// reassembler stitches the lmu-bridge's chunked binary frames back together.
+	// receiver.Listen calls the handler from a single goroutine, so it needs no
+	// locking.
+	var reassembler wire.Reassembler
+
 	log.Printf("listening for telemetry on %s", addr)
 	err := receiver.Listen(ctx, addr, func(_ context.Context, packet []byte) error {
-		// One UDP port carries both Forza's fixed-size binary packets and the
-		// lmu-bridge sidecar's JSON; demultiplex by content (JSON starts '{').
+		// One UDP port carries three things, demultiplexed by content:
+		//   1. the lmu-bridge's chunked binary frames (start with the wire magic),
+		//   2. the legacy lmu-bridge JSON (starts '{'), kept for old recordings,
+		//   3. Forza's fixed-size binary packets.
+		if wire.IsEnvelope(packet) {
+			// Record every chunk so replay reassembles exactly like the live path.
+			if err := s.runtime.RecordPacket(packet, time.Now()); err != nil {
+				return err
+			}
+			payload, complete, err := reassembler.Add(packet)
+			if err != nil {
+				log.Printf("ignored lmu chunk: %v", err)
+				return nil
+			}
+			if !complete {
+				return nil
+			}
+			frame, err := wire.UnmarshalFrame(payload)
+			if err != nil {
+				log.Printf("ignored malformed lmu frame: %v", err)
+				return nil
+			}
+			s.runtime.SetFrame(&frame)
+			return apply(frameToTelemetry(&frame), "lmu", frameToMeta(&frame))
+		}
+
 		if lmu.LooksLikePacket(packet) {
 			p, err := lmu.Parse(packet)
 			if err != nil {
 				log.Printf("ignored malformed lmu packet: %v", err)
 				return nil
 			}
-			// Record the raw JSON packet; replay demultiplexes it by content just
-			// like the live receiver, so LMU sessions record and replay too.
 			if err := s.runtime.RecordPacket(packet, time.Now()); err != nil {
 				return err
 			}
+			s.runtime.SetFrame(nil)
 			return apply(lmuToTelemetry(p), "lmu", lmuToMeta(p))
 		}
 
@@ -263,6 +292,7 @@ func (s *Service) runReceiver(ctx context.Context, cfg config.Config) {
 		if err := s.runtime.RecordPacket(packet, time.Now()); err != nil {
 			return err
 		}
+		s.runtime.SetFrame(nil)
 		return apply(telemetry, "forza", TelemetryMeta{})
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -291,6 +321,14 @@ func (s *Service) GetConfigStatus() ConfigStatus {
 
 func (s *Service) GetTelemetry() TelemetrySnapshot {
 	return s.runtime.LatestTelemetry()
+}
+
+// GetLatestFrame returns the most recent full LMU telemetry frame — every car's
+// complete telemetry (engine, wheels/tires, suspension, forces, aero, damage,
+// electric boost) plus session globals (weather, rules, driving aids). It is
+// nil when the active source is Forza or no LMU frame has arrived yet.
+func (s *Service) GetLatestFrame() *wire.Frame {
+	return s.runtime.LatestFrame()
 }
 
 func (s *Service) ApplyConfig(cfg config.Config) (config.Config, error) {

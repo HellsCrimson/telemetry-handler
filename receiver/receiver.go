@@ -17,7 +17,10 @@ func Listen(ctx context.Context, addr string, handle Handler) error {
 	}
 	defer packetConn.Close()
 
-	buf := make([]byte, 2048)
+	// Large enough for one lmu-bridge wire chunk (~60KB) as well as Forza's
+	// 324-byte packets; the LMU sidecar splits big frames into chunks that each
+	// fit a single datagram, and the app reassembles them.
+	buf := make([]byte, 65536)
 	var lastErrLog time.Time
 	for {
 		if err := packetConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
