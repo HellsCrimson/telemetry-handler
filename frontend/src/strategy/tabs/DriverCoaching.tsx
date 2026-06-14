@@ -32,7 +32,7 @@ export default function DriverCoaching({ state }: { state: SessionState }) {
       <section className="strat-group">
         <h3>Tire usage by mini-sector — last lap (total {(totalWear * 100).toFixed(1)}%)</h3>
         <MiniSectorBars values={wearPerSector} color="var(--red)" format={(v) => `${(v * 100).toFixed(2)} %`} highlight={minSpeed} corners={state.corners} />
-        <p className="muted strat-axis-note">Bar = tire wear consumed (4 wheels). Labels are corners (T1, T2…); number under a straight = min speed (km/h).</p>
+        <p className="muted strat-axis-note">Each bar is the tread % worn off in that ~5%-of-the-lap slice (all 4 wheels summed) — not the tire's remaining life. Wear per slice is tiny, so low-load slices (most straights) round to 0.00%; the heavily-loaded braking/cornering slices carry nearly all the wear. Labels are corners (T1, T2…); number under a straight = min speed (km/h).</p>
       </section>
 
       <section className="strat-group">

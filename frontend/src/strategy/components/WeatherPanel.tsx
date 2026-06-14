@@ -16,12 +16,18 @@ export default function WeatherPanel({ weather }: { weather: WeatherState }) {
         <Readout label="Cloud" value={(weather.cloudiness * 100).toFixed(0)} unit="%" />
         <Readout label="Wind" value={weather.wind_max.toFixed(0)} unit="m/s" />
       </div>
-      {grid.length === 9 && (
-        <div className="strat-raingrid" aria-label="Rain intensity across the track">
-          {grid.map((v, i) => (
-            <span key={i} className="strat-raincell" style={{ background: rainColor(v) }} title={`Zone ${i + 1}: ${(v * 100).toFixed(0)}% rain`} />
-          ))}
-        </div>
+      {grid.length === 9 && grid.some((v) => v > 0) && (
+        <>
+          <div className="strat-raingrid" aria-label="Rain intensity across the track">
+            {grid.map((v, i) => (
+              <span key={i} className="strat-raincell" style={{ background: rainColor(v) }} title={`Zone ${i + 1}: ${(v * 100).toFixed(0)}% rain`} />
+            ))}
+          </div>
+          <p className="muted strat-axis-note">
+            Rain intensity sampled at a 3×3 grid of points across the track — darker = wetter. Lets you spot a shower
+            sitting on one part of the circuit before it spreads.
+          </p>
+        </>
       )}
     </section>
   );

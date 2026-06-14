@@ -99,13 +99,15 @@ export function lapTotal(sectors: MiniSectorState[] | undefined, pick: (m: MiniS
 
 // lapsRemaining estimates how many racing laps are left. For a lap-limited race
 // it's max_laps - laps done; for a timed race it's time left / last lap. Returns
-// 0 when it can't be estimated.
+// 0 when it can't be estimated. (max_laps is already sanitised server-side — rF2
+// reports a huge sentinel for timed sessions, which is normalised to 0.)
 export function lapsRemaining(state: SessionState, car: CarState): number {
   if (state.max_laps > 0) {
     return Math.max(0, state.max_laps - car.total_laps);
   }
   if (state.session_end_time > 0 && car.last_lap > 0) {
     const timeLeft = state.session_end_time - state.session_time;
+    if (timeLeft <= 0) return 0;
     return Math.max(0, Math.ceil(timeLeft / car.last_lap));
   }
   return 0;

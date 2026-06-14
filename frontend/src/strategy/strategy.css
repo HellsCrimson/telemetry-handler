@@ -309,6 +309,16 @@
   height: auto;
   background: var(--panel2);
   border-radius: 6px;
+  cursor: grab;
+  touch-action: none;
+}
+.strat-driveline:active {
+  cursor: grabbing;
+}
+.strat-line-reset {
+  margin-left: auto;
+  padding: 2px 10px;
+  min-height: 0;
 }
 .strat-driveline-path {
   fill: none;

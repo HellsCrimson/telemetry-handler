@@ -180,8 +180,8 @@ type MiniSectorState struct {
 	MinSpeed    float64    `json:"min_speed"`    // slowest m/s within the mini-sector
 }
 
-// TireState is one corner's tire condition. Temps are Celsius (the wire format is
-// Kelvin); BrakeTemp is already Celsius.
+// TireState is one corner's tire condition. Tire and brake temps are converted
+// from LMU's Kelvin to Celsius in mapCar.
 type TireState struct {
 	Temp      [3]float64 `json:"temp"`       // left/center/right, Celsius
 	Pressure  float64    `json:"pressure"`   // kPa
@@ -233,7 +233,7 @@ func mapLMUFrame(f *wire.Frame) SessionState {
 		SessionType:    si.Session,
 		SessionTime:    si.CurrentET,
 		SessionEndTime: si.EndET,
-		MaxLaps:        si.MaxLaps,
+		MaxLaps:        saneMaxLaps(si.MaxLaps),
 		PlayerID:       f.PlayerID,
 		Flags:          mapFlags(f),
 		Weather:        mapWeather(f),
@@ -246,6 +246,17 @@ func mapLMUFrame(f *wire.Frame) SessionState {
 	return s
 }
 
+// saneMaxLaps normalises rF2's lap limit: a timed session reports a huge sentinel
+// (e.g. 2147483647) rather than 0 for "no lap limit", which otherwise makes
+// laps-remaining / fuel-to-add explode. Treat anything non-positive or
+// implausibly large as time-limited (0). No real race exceeds ~2000 laps.
+func saneMaxLaps(n int32) int32 {
+	if n <= 0 || n > 2000 {
+		return 0
+	}
+	return n
+}
+
 // mapPlayerDetail builds the Car Management view for the player car from its
 // telemetry plus the session-wide driving aids in the Extended buffer.
 func mapPlayerDetail(f *wire.Frame) PlayerDetail {
@@ -256,9 +267,12 @@ func mapPlayerDetail(f *wire.Frame) PlayerDetail {
 	vt := &p.Telemetry
 	ext := f.Extended
 	d := PlayerDetail{
-		Present:          true,
-		Rpm:              vt.EngineRPM,
-		MaxRpm:           vt.EngineMaxRPM,
+		Present: true,
+		Rpm:     vt.EngineRPM,
+		MaxRpm:  vt.EngineMaxRPM,
+		// Engine water/oil and electric motor temps are already in Celsius from LMU
+		// (unlike the tire and brake temps, which are Kelvin). Track/ambient also come
+		// in Celsius from ScoringInfo.
 		WaterTemp:        vt.EngineWaterTemp,
 		OilTemp:          vt.EngineOilTemp,
 		ElectricState:    int(vt.ElectricBoostMotorState),
@@ -336,7 +350,7 @@ func mapCar(v *wire.Vehicle, trackLen float64) CarState {
 			Temp:      [3]float64{kToC(w.Temperature[0]), kToC(w.Temperature[1]), kToC(w.Temperature[2])},
 			Pressure:  w.Pressure,
 			Wear:      w.Wear,
-			BrakeTemp: w.BrakeTemp,
+			BrakeTemp: kToC(w.BrakeTemp), // LMU reports brake temp in Kelvin
 			Compound:  compound,
 		}
 	}

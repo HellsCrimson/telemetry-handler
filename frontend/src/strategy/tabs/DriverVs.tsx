@@ -59,7 +59,7 @@ export default function DriverVs({ state }: { state: SessionState }) {
         </div>
       </section>
 
-      <Comparison title="Tire usage by mini-sector (best lap)" you={youRef} rival={rivalRef} corners={state.corners} rivalColor={classColor(rival?.class ?? "")} rivalLabel={rival?.driver || rival?.car_name || "Rival"} pick={(m) => m.tire_wear.reduce((a, b) => a + b, 0)} format={(v) => `${(v * 100).toFixed(2)} %`} youColor="var(--red)" />
+      <Comparison title="Tire usage by mini-sector (best lap)" note="Each bar is the tread % worn off in that slice (4 wheels summed), not remaining life. Low-load slices round to 0.00%. Note the two laps may be at different tire ages — your reference is your fastest lap (often on fresher tires), the rival's is their fastest — so absolute wear isn't directly comparable; the shape (which slices cost the most) is." you={youRef} rival={rivalRef} corners={state.corners} rivalColor={classColor(rival?.class ?? "")} rivalLabel={rival?.driver || rival?.car_name || "Rival"} pick={(m) => m.tire_wear.reduce((a, b) => a + b, 0)} format={(v) => `${(v * 100).toFixed(2)} %`} youColor="var(--red)" />
       <Comparison title="Fuel usage by mini-sector (best lap)" you={youRef} rival={rivalRef} corners={state.corners} rivalColor={classColor(rival?.class ?? "")} rivalLabel={rival?.driver || rival?.car_name || "Rival"} pick={(m) => m.fuel_used} format={(v) => `${v.toFixed(3)} L`} youColor="var(--blue)" />
 
       <section className="strat-group">
@@ -89,6 +89,7 @@ function PaceCol({ label, car, accent }: { label: string; car?: CarState; accent
 
 function Comparison({
   title,
+  note,
   you,
   rival,
   corners,
@@ -99,6 +100,7 @@ function Comparison({
   format,
 }: {
   title: string;
+  note?: string;
   you: MiniSectorState[];
   rival: MiniSectorState[];
   corners: string[];
@@ -111,6 +113,7 @@ function Comparison({
   return (
     <section className="strat-group">
       <h3>{title}</h3>
+      {note && <p className="muted strat-axis-note">{note}</p>}
       {you.length === 0 ? (
         <p className="muted">You haven’t set a lap yet.</p>
       ) : (

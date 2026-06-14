@@ -846,8 +846,8 @@ export class SessionState {
 }
 
 /**
- * TireState is one corner's tire condition. Temps are Celsius (the wire format is
- * Kelvin); BrakeTemp is already Celsius.
+ * TireState is one corner's tire condition. Tire and brake temps are converted
+ * from LMU's Kelvin to Celsius in mapCar.
  */
 export class TireState {
     /**
