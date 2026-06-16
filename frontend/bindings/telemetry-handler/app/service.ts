@@ -223,6 +223,15 @@ export function StopRecording(): $CancellablePromise<recording$0.Status> {
     });
 }
 
+/**
+ * TestMozaLights runs a short rev-light sweep on the connected wheel so the user
+ * can confirm the LEDs work from the dashboard's MOZA section (the same effect
+ * as the -moza-test CLI). Errors if no wheel is connected.
+ */
+export function TestMozaLights(): $CancellablePromise<void> {
+    return $Call.ByID(573481066);
+}
+
 // Private type creation functions
 const $$createType0 = analysis$0.Report.createFrom;
 const $$createType1 = config$0.Config.createFrom;

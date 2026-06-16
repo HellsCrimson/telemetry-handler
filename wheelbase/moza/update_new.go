@@ -34,6 +34,61 @@ func (d *Driver) updateRPMNew(currentRPM, maxRPM float32) error {
 	return nil
 }
 
+// TestLights runs a short rev-light sweep on the connected wheel so the user can
+// confirm the LEDs work from the dashboard — the same effect as the -moza-test
+// CLI, but through the driver's already-open connection. It works on either
+// protocol, blocks for the ~3s sweep (holding d.mu so live RPM updates do not
+// interleave), and leaves the bar off.
+func (d *Driver) TestLights() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	const step = 110 * time.Millisecond
+	for lit := 0; lit <= 10; lit++ {
+		if err := d.testWrite(lit, false); err != nil {
+			return err
+		}
+		time.Sleep(step)
+	}
+	if err := d.testWrite(10, true); err != nil { // redline flash hold
+		return err
+	}
+	time.Sleep(500 * time.Millisecond)
+	for lit := 10; lit >= 0; lit-- {
+		if err := d.testWrite(lit, false); err != nil {
+			return err
+		}
+		time.Sleep(step)
+	}
+
+	// Force the next live UpdateRPM to rewrite the real mask onto the wheel.
+	d.lastMask = ^uint16(0)
+	d.lastMaskNew = ^uint32(0)
+	return d.testWrite(0, false)
+}
+
+// testWrite lights the first lit LEDs (or the redline flash) for TestLights,
+// using whichever protocol the driver speaks. Callers already hold d.mu.
+func (d *Driver) testWrite(lit int, redline bool) error {
+	if d.protocol == ProtocolNew {
+		mask := maskForLit(lit)
+		if redline {
+			mask = redlineMask
+		}
+		frame, err := setRPMMaskNew(mask)
+		if err != nil {
+			return err
+		}
+		return d.writeFrames([][]byte{frame})
+	}
+
+	var mask uint16
+	if lit > 0 {
+		mask = uint16(1)<<uint(min(lit, 16)) - 1
+	}
+	return d.writeMasks(mask, d.buttonMask)
+}
+
 // blankLEDs turns the rev lights off, using whichever protocol the driver
 // speaks: the legacy path clears the masks and leaves telemetry mode, the new
 // path sends an all-off rev-light mask. Callers already hold d.mu.

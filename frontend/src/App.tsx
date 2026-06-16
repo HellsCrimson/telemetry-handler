@@ -61,6 +61,7 @@ export default function App() {
   const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [overlayRunning, setOverlayRunning] = useState(false);
   const [mozaStatus, setMozaStatus] = useState<any>({ enabled: false, connected: false, port: "", model: "", serial: "", rpm_leds: 0, wheel: "", protocol: "" });
+  const [testingLights, setTestingLights] = useState(false);
   const [mozaDevices, setMozaDevices] = useState<any[]>([]);
   const [monitor, setMonitor] = useState<{ width: number; height: number; name: string; detected: boolean }>({
     width: 1920,
@@ -310,6 +311,19 @@ export default function App() {
       setStatus("Preview active");
     } catch (e) {
       setStatus(String(e), "error");
+    }
+  }
+
+  async function testLights() {
+    setTestingLights(true);
+    setStatus("Testing rev lights…");
+    try {
+      await Service.TestMozaLights();
+      setStatus("Light test complete");
+    } catch (e) {
+      setStatus(String(e), "error");
+    } finally {
+      setTestingLights(false);
     }
   }
 
@@ -671,7 +685,12 @@ export default function App() {
                 <label>RPM LEDs (rim) <input type="number" min={0} max={16} value={config.moza.rpm_leds ?? 0} onChange={(e) => patch((c) => (c.moza.rpm_leds = Number(e.target.value)))} /></label>
                 <p className="hint">Rev-light count on the rim. 0 = auto ({mozaStatus.rpm_leds || "default"}). Set this to match your rim if the lights look wrong — the rim model can't be detected over USB.</p>
                 <label>Button mask <input type="number" min={0} max={1023} value={config.moza.button_mask} onChange={(e) => patch((c) => (c.moza.button_mask = Number(e.target.value)))} /></label>
-                <button className="secondary" onClick={previewButtons}>Preview Buttons</button>
+                <div className="actions">
+                  <button className="secondary" onClick={previewButtons}>Preview Buttons</button>
+                  <button className="secondary" onClick={testLights} disabled={!mozaStatus.connected || testingLights} title={mozaStatus.connected ? "Sweep the rev lights to confirm they work" : "Connect a wheel first"}>
+                    {testingLights ? "Testing…" : "Test Lights"}
+                  </button>
+                </div>
               </div>
               <div className="panel">
                 <h2>Connected Wheel</h2>

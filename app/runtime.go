@@ -402,6 +402,20 @@ func (r *Runtime) UpdateMozaRPM(currentRPM, maxRPM float32) error {
 	return driver.UpdateRPM(currentRPM, maxRPM)
 }
 
+// TestMozaLights runs a brief rev-light sweep on the connected wheel so the user
+// can confirm the LEDs work from the dashboard. The driver pointer is grabbed
+// under the runtime lock and released before the (blocking) sweep, so live
+// telemetry is not held up by the runtime mutex.
+func (r *Runtime) TestMozaLights() error {
+	r.mu.RLock()
+	driver := r.moza
+	r.mu.RUnlock()
+	if driver == nil {
+		return fmt.Errorf("MOZA wheel not connected")
+	}
+	return driver.TestLights()
+}
+
 func (r *Runtime) ApplyConfig(next config.Config) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -436,6 +436,13 @@ func (s *Service) GetMozaStatus() MozaStatus {
 	return s.runtime.MozaStatus()
 }
 
+// TestMozaLights runs a short rev-light sweep on the connected wheel so the user
+// can confirm the LEDs work from the dashboard's MOZA section (the same effect
+// as the -moza-test CLI). Errors if no wheel is connected.
+func (s *Service) TestMozaLights() error {
+	return s.runtime.TestMozaLights()
+}
+
 // DetectMoza lists the MOZA wheels currently attached over USB so the dashboard
 // can show what is connected and let the user pick the serial port. Empty when
 // none are attached (or on platforms without detection).
