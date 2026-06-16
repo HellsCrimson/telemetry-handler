@@ -16,6 +16,10 @@ type Device struct {
 	Model     string `json:"model"`
 	Serial    string `json:"serial"`
 	ProductID uint16 `json:"product_id"`
+	// Wheel is the attached rim's model code (e.g. "ES", "KS"), read over serial
+	// via DetectWheel. Empty when no rim answered or detection did not run. The
+	// base USB descriptor (Model) identifies the base, not the rim.
+	Wheel string `json:"wheel"`
 }
 
 // Detect enumerates connected MOZA devices. Implemented per platform (sysfs on

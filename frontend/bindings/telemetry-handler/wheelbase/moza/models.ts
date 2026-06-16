@@ -18,6 +18,13 @@ export class Device {
     "serial": string;
     "product_id": number;
 
+    /**
+     * Wheel is the attached rim's model code (e.g. "ES", "KS"), read over serial
+     * via DetectWheel. Empty when no rim answered or detection did not run. The
+     * base USB descriptor (Model) identifies the base, not the rim.
+     */
+    "wheel": string;
+
     /** Creates a new Device instance. */
     constructor($$source: Partial<Device> = {}) {
         if (!("port" in $$source)) {
@@ -31,6 +38,9 @@ export class Device {
         }
         if (!("product_id" in $$source)) {
             this["product_id"] = 0;
+        }
+        if (!("wheel" in $$source)) {
+            this["wheel"] = "";
         }
 
         Object.assign(this, $$source);

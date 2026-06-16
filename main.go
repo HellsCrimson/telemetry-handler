@@ -12,13 +12,25 @@ import (
 
 	"telemetry-handler/app"
 	"telemetry-handler/config"
-	"telemetry-handler/wheelbase/moza"
 	"telemetry-handler/recording"
 	"telemetry-handler/store"
+	"telemetry-handler/wheelbase/moza"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+// resolveTestProtocol turns the -moza-protocol flag into a concrete protocol for
+// the standalone test/probe, auto-detecting the rim over serial when "auto".
+func resolveTestProtocol(flagVal, port string) moza.Protocol {
+	protocol, model := moza.ResolveWheel(moza.ParseProtocol(flagVal), port)
+	name := "legacy"
+	if protocol == moza.ProtocolNew {
+		name = "new"
+	}
+	log.Printf("moza: using %s protocol for wheel %q", name, model)
+	return protocol
+}
 
 func main() {
 	configPath := flag.String("config", "", "path to JSON config file")
@@ -27,14 +39,15 @@ func main() {
 	mozaDuration := flag.Duration("moza-test-duration", 10*time.Second, "duration for -moza-test")
 	mozaLEDProbe := flag.Bool("moza-led-probe", false, "light each rev-light segment one at a time to identify the rim's LED layout, then exit")
 	mozaLEDProbeHold := flag.Duration("moza-led-probe-hold", 600*time.Millisecond, "how long to hold each segment during -moza-led-probe")
-	mozaProtocol := flag.String("moza-protocol", "old", "rim LED protocol for -moza-test/-moza-led-probe: \"old\" (legacy rims) or \"new\" (ESX and other newer rims)")
+	mozaProtocol := flag.String("moza-protocol", "auto", "rim LED protocol for -moza-test/-moza-led-probe: \"auto\" (detect), \"old\" (legacy rims), or \"new\" (ESX and other newer rims)")
 	flag.Parse()
 
 	if *mozaTest {
 		if *mozaPort == "" {
 			log.Fatal("moza test requires -moza-port, for example -moza-port /dev/ttyACM1")
 		}
-		if err := moza.RunLightTest(*mozaPort, *mozaDuration, moza.ParseProtocol(*mozaProtocol)); err != nil {
+		protocol := resolveTestProtocol(*mozaProtocol, *mozaPort)
+		if err := moza.RunLightTest(*mozaPort, *mozaDuration, protocol); err != nil {
 			log.Fatalf("moza test: %v", err)
 		}
 		return
@@ -44,9 +57,10 @@ func main() {
 		if *mozaPort == "" {
 			log.Fatal("moza led probe requires -moza-port, for example -moza-port /dev/ttyACM1")
 		}
+		protocol := resolveTestProtocol(*mozaProtocol, *mozaPort)
 		// Probe the full addressable range so a rim with any segment count is fully
 		// covered; the user counts which physical LEDs respond.
-		if err := moza.RunLEDProbe(*mozaPort, 16, *mozaLEDProbeHold, moza.ParseProtocol(*mozaProtocol)); err != nil {
+		if err := moza.RunLEDProbe(*mozaPort, 16, *mozaLEDProbeHold, protocol); err != nil {
 			log.Fatalf("moza led probe: %v", err)
 		}
 		return

@@ -82,6 +82,12 @@ func (c *serialConn) WriteFrame(frame []byte) error {
 	return nil
 }
 
+// read reads available bytes, blocking up to the termios VTIME (0.5s) before
+// returning. Used by DetectWheel to read query responses.
+func (c *serialConn) read(p []byte) (int, error) {
+	return c.file.Read(p)
+}
+
 func configureSerial(fd int) error {
 	var termios syscall.Termios
 	if err := ioctl(fd, syscall.TCGETS, uintptr(unsafe.Pointer(&termios))); err != nil {

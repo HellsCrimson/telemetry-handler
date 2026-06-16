@@ -69,6 +69,11 @@ type MozaStatus struct {
 	Model     string `json:"model"`
 	Serial    string `json:"serial"`
 	RPMLEDs   int    `json:"rpm_leds"`
+	// Wheel is the attached rim's model code (e.g. "ES", "KS"), read over serial;
+	// empty when no rim answered. Protocol is the effective LED protocol in use
+	// ("new" or "old") once connected.
+	Wheel    string `json:"wheel"`
+	Protocol string `json:"protocol"`
 }
 
 // Runtime holds the shared, mutex-protected application state: the latest
@@ -76,20 +81,21 @@ type MozaStatus struct {
 // the recording manager. It is the single source of truth consumed by the UDP
 // receiver loop, the Wails-bound service and the overlay.
 type Runtime struct {
-	mu         sync.RWMutex
-	cfg        config.Config
-	cfgPath    string
-	telemetry  forza.Telemetry
-	seen       bool
-	seenAt     time.Time
-	source     string
-	meta       TelemetryMeta
-	frame      *wire.Frame        // full LMU frame (all cars + globals); nil for Forza
-	engineer   *engineer.Engineer // live strategy engine (multi-car SessionState)
-	store      *store.Store       // local persistence (reference laps, corners, sessions, recordings); nil if unavailable
-	moza       *moza.Driver
-	mozaDevice moza.Device // USB identity of the connected wheel (zero when disconnected or undetectable)
-	recorder   *recording.Manager
+	mu           sync.RWMutex
+	cfg          config.Config
+	cfgPath      string
+	telemetry    forza.Telemetry
+	seen         bool
+	seenAt       time.Time
+	source       string
+	meta         TelemetryMeta
+	frame        *wire.Frame        // full LMU frame (all cars + globals); nil for Forza
+	engineer     *engineer.Engineer // live strategy engine (multi-car SessionState)
+	store        *store.Store       // local persistence (reference laps, corners, sessions, recordings); nil if unavailable
+	moza         *moza.Driver
+	mozaDevice   moza.Device   // USB identity of the connected wheel (zero when disconnected or undetectable)
+	mozaProtocol moza.Protocol // effective LED protocol of the connected driver (for status display)
+	recorder     *recording.Manager
 
 	// mozaWarned dedupes the "waiting for wheel" log so the reconnect
 	// supervisor does not spam it every tick while the wheel is absent.
@@ -356,6 +362,13 @@ func (r *Runtime) MozaStatus() MozaStatus {
 	if port == "" {
 		port = r.cfg.Moza.Port
 	}
+	protocol := ""
+	if r.moza != nil {
+		protocol = "old"
+		if r.mozaProtocol == moza.ProtocolNew {
+			protocol = "new"
+		}
+	}
 	return MozaStatus{
 		Enabled:   r.cfg.Moza.Enabled,
 		Connected: r.moza != nil,
@@ -363,6 +376,8 @@ func (r *Runtime) MozaStatus() MozaStatus {
 		Model:     r.mozaDevice.Model,
 		Serial:    r.mozaDevice.Serial,
 		RPMLEDs:   leds,
+		Wheel:     r.mozaDevice.Wheel,
+		Protocol:  protocol,
 	}
 }
 
@@ -613,6 +628,7 @@ func (r *Runtime) applyMoza(next config.Moza, staged *config.Config) error {
 			r.mozaDevice = moza.Device{}
 		} else {
 			r.mozaDevice = dev
+			r.mozaProtocol = options.Protocol
 		}
 		return nil
 	}
@@ -636,6 +652,7 @@ func (r *Runtime) applyMoza(next config.Moza, staged *config.Config) error {
 	r.mozaWarned = false
 	r.moza = driver
 	r.mozaDevice = dev
+	r.mozaProtocol = options.Protocol
 	return nil
 }
 
@@ -671,6 +688,7 @@ func (r *Runtime) reconnectMoza() {
 	r.mozaWarned = false
 	r.moza = driver
 	r.mozaDevice = dev
+	r.mozaProtocol = options.Protocol
 }
 
 // resolveMoza builds the driver options for a MOZA config, resolving both the
@@ -702,6 +720,15 @@ func resolveMoza(cfg config.Moza) (opts moza.Options, dev moza.Device, ok bool) 
 	if cfg.RPMLEDs > 0 {
 		leds = cfg.RPMLEDs
 	}
+
+	// Resolve protocol="auto" and read the rim model over serial (the rim is not
+	// identifiable over USB). An explicit old/new is honoured; the model is still
+	// probed so the dashboard can name the connected wheel.
+	protocol, model := moza.ResolveWheel(moza.ParseProtocol(cfg.Protocol), port)
+	if model != "" {
+		dev.Wheel = model
+	}
+
 	return moza.Options{
 		Port:          port,
 		UpdateHz:      cfg.UpdateHz,
@@ -710,7 +737,7 @@ func resolveMoza(cfg config.Moza) (opts moza.Options, dev moza.Device, ok bool) 
 		ButtonColors:  mozaColorsFromConfig(cfg.ButtonColors),
 		ButtonMask:    cfg.ButtonMask,
 		RPMLEDs:       leds,
-		Protocol:      moza.ParseProtocol(cfg.Protocol),
+		Protocol:      protocol,
 	}, dev, true
 }
 

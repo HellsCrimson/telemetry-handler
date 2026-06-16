@@ -10,6 +10,8 @@ func TestParseProtocol(t *testing.T) {
 		"new":  ProtocolNew,
 		"NEW":  ProtocolNew,
 		" new": ProtocolNew,
+		"auto": ProtocolAuto,
+		"AUTO": ProtocolAuto,
 		"old":  ProtocolOld,
 		"":     ProtocolOld,
 		"junk": ProtocolOld,
@@ -19,6 +21,42 @@ func TestParseProtocol(t *testing.T) {
 			t.Errorf("ParseProtocol(%q) = %v, want %v", in, got, want)
 		}
 	}
+}
+
+// TestParseModelResponse uses the exact identity replies captured from the two
+// rims: the new (ESX) rim answers on device 0x81 with "ES"; the legacy rim
+// answers on device 0x71 (0x17) which must NOT be treated as new-protocol.
+func TestParseModelResponse(t *testing.T) {
+	es := mustHex(t, "7e11878101455300000000000000000000000000003d") // new rim "ES" on dev 0x18
+	ks := mustHex(t, "7e118771014b53000000000000000000000000000033") // legacy rim "KS" on dev 0x17
+
+	// 0x81 = device 0x18 (new); 0x71 = device 0x17 (legacy).
+	if model, ok := parseModelResponse(es, 0x81); !ok || model != "ES" {
+		t.Errorf("ES reply on 0x18: got (%q, %v), want (\"ES\", true)", model, ok)
+	}
+	if _, ok := parseModelResponse(ks, 0x81); ok {
+		t.Error("legacy rim reply (device 0x17) must not match the new (0x81) probe")
+	}
+	if model, ok := parseModelResponse(ks, 0x71); !ok || model != "KS" {
+		t.Errorf("KS reply on 0x17: got (%q, %v), want (\"KS\", true)", model, ok)
+	}
+	if _, ok := parseModelResponse([]byte{0x00, 0x11, 0x22}, 0x81); ok {
+		t.Error("garbage must not match")
+	}
+	// Tolerate the response sitting mid-buffer behind other frames.
+	noise := append([]byte{0x7e, 0x06, 0x41, 0x18, 0xfd, 0xde, 0, 0, 0, 0, 0xc5}, es...)
+	if model, ok := parseModelResponse(noise, 0x81); !ok || model != "ES" {
+		t.Errorf("framed reply: got (%q, %v), want (\"ES\", true)", model, ok)
+	}
+}
+
+func mustHex(t *testing.T, s string) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		t.Fatalf("bad hex %q: %v", s, err)
+	}
+	return b
 }
 
 // TestSetLEDColorsNewMatchesCapture asserts the bulk colour command reproduces
@@ -72,7 +110,6 @@ func TestNewConfigFramesMatchCapture(t *testing.T) {
 		}
 	}
 }
-
 
 // TestSetRPMMaskNewMatchesCapture pins the live rev-light mask frames to the
 // bytes captured from the Pit House RPM sweep (group 0x41 → device 0x18, cmd

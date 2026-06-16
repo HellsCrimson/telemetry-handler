@@ -24,16 +24,48 @@ const (
 	// ProtocolNew is the channel-config + per-LED-colour protocol used by newer
 	// rims such as the ESX.
 	ProtocolNew
+	// ProtocolAuto asks the caller to detect the rim's protocol at connect time
+	// (DetectWheel). It is resolved to ProtocolOld/ProtocolNew before a Driver
+	// is built, so a Driver never sees it (and treats it as ProtocolOld if it
+	// somehow does).
+	ProtocolAuto
 )
 
-// ParseProtocol maps a config string onto a Protocol. Anything other than
-// "new" (case-insensitive) is the legacy protocol, so existing configs and the
-// known-good rim are unaffected.
+// ParseProtocol maps a config string onto a Protocol: "new", "auto", or
+// (anything else) the legacy protocol, so existing configs and the known-good
+// rim are unaffected.
 func ParseProtocol(s string) Protocol {
-	if strings.EqualFold(strings.TrimSpace(s), "new") {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "new":
 		return ProtocolNew
+	case "auto":
+		return ProtocolAuto
+	default:
+		return ProtocolOld
 	}
-	return ProtocolOld
+}
+
+// parseModelResponse scans a serial read buffer for a model-code reply (group
+// 0x87 / the given response device / cmd 0x01) and returns the ASCII model
+// string. respDev is the queried device's nibble-swapped form: 0x81 for the new
+// LED controller (device 0x18), 0x71 for the legacy wheel (0x17). The bool is
+// false when no matching reply is present.
+func parseModelResponse(buf []byte, respDev byte) (string, bool) {
+	for i := 0; i+5 <= len(buf); i++ {
+		if buf[i] != 0x7e || buf[i+2] != 0x87 || buf[i+3] != respDev || buf[i+4] != 0x01 {
+			continue
+		}
+		var model []byte
+		for j := i + 5; j < len(buf) && buf[j] != 0x00; j++ {
+			if buf[j] < 0x20 || buf[j] > 0x7e {
+				break
+			}
+			model = append(model, buf[j])
+		}
+		// device 0x18 answered → new-protocol rim, whether or not the model parsed.
+		return string(model), true
+	}
+	return "", false
 }
 
 const (

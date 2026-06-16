@@ -95,6 +95,14 @@ export class MozaStatus {
     "serial": string;
     "rpm_leds": number;
 
+    /**
+     * Wheel is the attached rim's model code (e.g. "ES", "KS"), read over serial;
+     * empty when no rim answered. Protocol is the effective LED protocol in use
+     * ("new" or "old") once connected.
+     */
+    "wheel": string;
+    "protocol": string;
+
     /** Creates a new MozaStatus instance. */
     constructor($$source: Partial<MozaStatus> = {}) {
         if (!("enabled" in $$source)) {
@@ -114,6 +122,12 @@ export class MozaStatus {
         }
         if (!("rpm_leds" in $$source)) {
             this["rpm_leds"] = 0;
+        }
+        if (!("wheel" in $$source)) {
+            this["wheel"] = "";
+        }
+        if (!("protocol" in $$source)) {
+            this["protocol"] = "";
         }
 
         Object.assign(this, $$source);

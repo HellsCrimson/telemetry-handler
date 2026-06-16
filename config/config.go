@@ -56,9 +56,11 @@ type Moza struct {
 	// 0 means "auto" — use the detected base's profile (or the default).
 	RPMLEDs int `json:"rpm_leds,omitempty"`
 	// Protocol selects the rim's LED protocol: "" / "old" for the legacy
-	// telemetry-mask rims (default, unchanged), or "new" for newer rims such as
-	// the ESX whose LEDs live on a separate device and need a channel-config
-	// burst. The rim is not identifiable over USB, so this is a manual choice.
+	// telemetry-mask rims (default, unchanged), "new" for newer rims such as the
+	// ESX whose LEDs live on a separate device and need a channel-config burst, or
+	// "auto" to detect at connect by querying the rim over serial (the new LED
+	// controller, device 0x18, answers a model-code query; legacy rims stay
+	// silent). The rim is not identifiable over USB, hence the serial probe.
 	Protocol string `json:"protocol,omitempty"`
 }
 

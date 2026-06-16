@@ -57,6 +57,7 @@ var (
 	procCreateFileW     = kernel32.NewProc("CreateFileW")
 	procCloseHandle     = kernel32.NewProc("CloseHandle")
 	procWriteFile       = kernel32.NewProc("WriteFile")
+	procReadFile        = kernel32.NewProc("ReadFile")
 	procGetCommState    = kernel32.NewProc("GetCommState")
 	procSetCommState    = kernel32.NewProc("SetCommState")
 	procSetCommTimeouts = kernel32.NewProc("SetCommTimeouts")
@@ -215,6 +216,26 @@ func (c *serialConn) WriteFrame(frame []byte) error {
 	}
 
 	return nil
+}
+
+// read reads available bytes, returning after the configured comm read timeout
+// (500ms) when none arrive. Used by DetectWheel to read query responses.
+func (c *serialConn) read(p []byte) (int, error) {
+	if c.handle == invalidHandle {
+		return 0, fmt.Errorf("serial port is closed")
+	}
+	var bytesRead uint32
+	ok, _, err := procReadFile.Call(
+		uintptr(c.handle),
+		uintptr(unsafe.Pointer(&p[0])),
+		uintptr(len(p)),
+		uintptr(unsafe.Pointer(&bytesRead)),
+		0,
+	)
+	if ok == 0 {
+		return 0, fmt.Errorf("ReadFile failed: %w", err)
+	}
+	return int(bytesRead), nil
 }
 
 func RunLightTest(path string, duration time.Duration, protocol Protocol) error {

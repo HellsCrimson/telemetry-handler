@@ -85,6 +85,16 @@ export class Moza {
      */
     "rpm_leds"?: number;
 
+    /**
+     * Protocol selects the rim's LED protocol: "" / "old" for the legacy
+     * telemetry-mask rims (default, unchanged), "new" for newer rims such as the
+     * ESX whose LEDs live on a separate device and need a channel-config burst, or
+     * "auto" to detect at connect by querying the rim over serial (the new LED
+     * controller, device 0x18, answers a model-code query; legacy rims stay
+     * silent). The rim is not identifiable over USB, hence the serial probe.
+     */
+    "protocol"?: string;
+
     /** Creates a new Moza instance. */
     constructor($$source: Partial<Moza> = {}) {
         if (!("enabled" in $$source)) {

@@ -60,7 +60,7 @@ export default function App() {
   const [replayMax, setReplayMax] = useState(5000);
   const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [overlayRunning, setOverlayRunning] = useState(false);
-  const [mozaStatus, setMozaStatus] = useState<any>({ enabled: false, connected: false, port: "", model: "", serial: "", rpm_leds: 0 });
+  const [mozaStatus, setMozaStatus] = useState<any>({ enabled: false, connected: false, port: "", model: "", serial: "", rpm_leds: 0, wheel: "", protocol: "" });
   const [mozaDevices, setMozaDevices] = useState<any[]>([]);
   const [monitor, setMonitor] = useState<{ width: number; height: number; name: string; detected: boolean }>({
     width: 1920,
@@ -677,7 +677,8 @@ export default function App() {
                 <h2>Connected Wheel</h2>
                 <dl className="kv">
                   <div><dt>Status</dt><dd>{!mozaStatus.enabled ? "Disabled" : mozaStatus.connected ? "Connected" : "Waiting for wheel…"}</dd></div>
-                  <div><dt>Model</dt><dd>{mozaStatus.connected ? (mozaStatus.model || "Unrecognised MOZA") : "—"}</dd></div>
+                  <div><dt>Wheel</dt><dd>{mozaStatus.connected ? (mozaStatus.wheel ? `${mozaStatus.wheel}${mozaStatus.protocol ? ` (${mozaStatus.protocol} protocol)` : ""}` : "Unknown rim") : "—"}</dd></div>
+                  <div><dt>Base</dt><dd>{mozaStatus.connected ? (mozaStatus.model || "Unrecognised MOZA") : "—"}</dd></div>
                   <div><dt>Serial</dt><dd>{mozaStatus.connected && mozaStatus.serial ? mozaStatus.serial : "—"}</dd></div>
                   <div><dt>RPM LEDs</dt><dd>{mozaStatus.connected ? mozaStatus.rpm_leds : "—"}</dd></div>
                 </dl>
