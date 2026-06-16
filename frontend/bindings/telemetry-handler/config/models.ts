@@ -77,6 +77,14 @@ export class Moza {
     "button_colors": Color[];
     "button_mask": number;
 
+    /**
+     * RPMLEDs manually sets the number of rev-light segments on the wheel rim.
+     * The rim is not identifiable over USB (only the base is), so when the base's
+     * default profile does not match the attached rim, set this to override it.
+     * 0 means "auto" — use the detected base's profile (or the default).
+     */
+    "rpm_leds"?: number;
+
     /** Creates a new Moza instance. */
     constructor($$source: Partial<Moza> = {}) {
         if (!("enabled" in $$source)) {

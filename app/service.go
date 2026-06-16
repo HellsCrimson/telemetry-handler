@@ -22,6 +22,7 @@ import (
 	"telemetry-handler/receiver"
 	"telemetry-handler/recording"
 	"telemetry-handler/store"
+	"telemetry-handler/wheelbase/moza"
 )
 
 const (
@@ -426,6 +427,20 @@ func (s *Service) SaveConfig(cfg config.Config) error {
 
 func (s *Service) PreviewMoza(moza config.Moza) error {
 	return s.runtime.PreviewMoza(moza)
+}
+
+// GetMozaStatus reports whether the MOZA wheel is connected and, when USB
+// detection identifies it, its model/serial/rev-light count. Polled by the
+// dashboard's MOZA section to show live wheel info.
+func (s *Service) GetMozaStatus() MozaStatus {
+	return s.runtime.MozaStatus()
+}
+
+// DetectMoza lists the MOZA wheels currently attached over USB so the dashboard
+// can show what is connected and let the user pick the serial port. Empty when
+// none are attached (or on platforms without detection).
+func (s *Service) DetectMoza() []moza.Device {
+	return s.runtime.DetectMoza()
 }
 
 func (s *Service) GetRecordingStatus() recording.Status {

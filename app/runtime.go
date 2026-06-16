@@ -13,9 +13,9 @@ import (
 	"telemetry-handler/engineer"
 	"telemetry-handler/game/forza"
 	"telemetry-handler/game/lmu/wire"
-	"telemetry-handler/wheelbase/moza"
 	"telemetry-handler/recording"
 	"telemetry-handler/store"
+	"telemetry-handler/wheelbase/moza"
 )
 
 // TelemetryMeta carries descriptive session info that does not fit the binary
@@ -58,24 +58,38 @@ type ReplaySample struct {
 	Meta      TelemetryMeta   `json:"meta"`
 }
 
+// MozaStatus reports the MOZA wheel's live state to the dashboard (polled like
+// the overlay/recording status). Enabled is the config intent; Connected is
+// whether a driver is actually open. Model/Serial/RPMLEDs are populated from USB
+// detection when the connected port maps to a known device.
+type MozaStatus struct {
+	Enabled   bool   `json:"enabled"`
+	Connected bool   `json:"connected"`
+	Port      string `json:"port"`
+	Model     string `json:"model"`
+	Serial    string `json:"serial"`
+	RPMLEDs   int    `json:"rpm_leds"`
+}
+
 // Runtime holds the shared, mutex-protected application state: the latest
 // telemetry snapshot, the active configuration, the optional MOZA driver and
 // the recording manager. It is the single source of truth consumed by the UDP
 // receiver loop, the Wails-bound service and the overlay.
 type Runtime struct {
-	mu        sync.RWMutex
-	cfg       config.Config
-	cfgPath   string
-	telemetry forza.Telemetry
-	seen      bool
-	seenAt    time.Time
-	source    string
-	meta      TelemetryMeta
-	frame     *wire.Frame        // full LMU frame (all cars + globals); nil for Forza
-	engineer  *engineer.Engineer // live strategy engine (multi-car SessionState)
-	store     *store.Store       // local persistence (reference laps, corners, sessions, recordings); nil if unavailable
-	moza      *moza.Driver
-	recorder  *recording.Manager
+	mu         sync.RWMutex
+	cfg        config.Config
+	cfgPath    string
+	telemetry  forza.Telemetry
+	seen       bool
+	seenAt     time.Time
+	source     string
+	meta       TelemetryMeta
+	frame      *wire.Frame        // full LMU frame (all cars + globals); nil for Forza
+	engineer   *engineer.Engineer // live strategy engine (multi-car SessionState)
+	store      *store.Store       // local persistence (reference laps, corners, sessions, recordings); nil if unavailable
+	moza       *moza.Driver
+	mozaDevice moza.Device // USB identity of the connected wheel (zero when disconnected or undetectable)
+	recorder   *recording.Manager
 
 	// mozaWarned dedupes the "waiting for wheel" log so the reconnect
 	// supervisor does not spam it every tick while the wheel is absent.
@@ -326,6 +340,43 @@ func (r *Runtime) MozaEnabled() bool {
 	return r.moza != nil
 }
 
+// MozaStatus reports the live state of the MOZA wheel for the dashboard: whether
+// a driver is currently connected, the configured port, and — when the wheel was
+// identified over USB — its model, serial and rev-light count. Connected without
+// an identified model means the driver opened a port that USB detection could not
+// match (e.g. a manual port override, or off Linux where detection is a stub).
+func (r *Runtime) MozaStatus() MozaStatus {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	leds := moza.ProfileFor(r.mozaDevice.ProductID, r.mozaDevice.Model).RPMLEDs
+	if r.cfg.Moza.RPMLEDs > 0 {
+		leds = r.cfg.Moza.RPMLEDs
+	}
+	port := r.mozaDevice.Port
+	if port == "" {
+		port = r.cfg.Moza.Port
+	}
+	return MozaStatus{
+		Enabled:   r.cfg.Moza.Enabled,
+		Connected: r.moza != nil,
+		Port:      port,
+		Model:     r.mozaDevice.Model,
+		Serial:    r.mozaDevice.Serial,
+		RPMLEDs:   leds,
+	}
+}
+
+// DetectMoza enumerates the MOZA wheels currently attached over USB, so the
+// dashboard can show what is connected and let the user pick the serial port
+// without typing it. Empty when none are attached (or off Linux).
+func (r *Runtime) DetectMoza() []moza.Device {
+	devices, err := moza.Detect()
+	if err != nil {
+		log.Printf("moza: detect: %v", err)
+	}
+	return devices
+}
+
 func (r *Runtime) UpdateMozaRPM(currentRPM, maxRPM float32) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -373,7 +424,11 @@ func (r *Runtime) PreviewMoza(next config.Moza) error {
 	if next.UpdateHz <= 0 {
 		next.UpdateHz = 20
 	}
-	return driver.Apply(mozaOptionsFromConfig(next))
+	opts, _, ok := resolveMoza(next)
+	if !ok {
+		return fmt.Errorf("no MOZA wheel detected to preview")
+	}
+	return driver.Apply(opts)
 }
 
 func (r *Runtime) RecordPacket(packet []byte, at time.Time) error {
@@ -492,6 +547,7 @@ func (r *Runtime) Close() {
 	r.mu.Lock()
 	driver := r.moza
 	r.moza = nil
+	r.mozaDevice = moza.Device{}
 	r.mu.Unlock()
 	if driver != nil {
 		if err := driver.Close(); err != nil {
@@ -522,6 +578,7 @@ func (r *Runtime) applyMoza(next config.Moza, staged *config.Config) error {
 			}
 			r.moza = nil
 		}
+		r.mozaDevice = moza.Device{}
 		return nil
 	}
 
@@ -532,15 +589,30 @@ func (r *Runtime) applyMoza(next config.Moza, staged *config.Config) error {
 		}
 	}
 
-	options := mozaOptionsFromConfig(next)
-	// Reconfigure an existing driver on the same port in place.
-	if r.moza != nil && r.cfg.Moza.Port == next.Port {
+	options, dev, ok := resolveMoza(next)
+	if !ok {
+		// Enabled but nothing to open yet: no port configured and no wheel
+		// detected. Not fatal — drop any stale driver and let the supervisor
+		// connect once a wheel appears.
+		if r.moza != nil {
+			_ = r.moza.Close()
+			r.moza = nil
+		}
+		r.mozaDevice = moza.Device{}
+		r.mozaWarned = true
+		return nil
+	}
+	// Reconfigure an existing driver on the same effective port in place.
+	if r.moza != nil && r.mozaDevice.Port == options.Port {
 		if err := r.moza.Apply(options); err != nil {
 			// The device write failed (likely unplugged). Drop the driver; the
 			// reconnect supervisor will reopen it when the wheel returns.
 			log.Printf("moza: apply failed, will reconnect when the wheel is available: %v", err)
 			_ = r.moza.Close()
 			r.moza = nil
+			r.mozaDevice = moza.Device{}
+		} else {
+			r.mozaDevice = dev
 		}
 		return nil
 	}
@@ -563,6 +635,7 @@ func (r *Runtime) applyMoza(next config.Moza, staged *config.Config) error {
 	}
 	r.mozaWarned = false
 	r.moza = driver
+	r.mozaDevice = dev
 	return nil
 }
 
@@ -578,28 +651,86 @@ func (r *Runtime) reconnectMoza() {
 	if !r.cfg.Moza.Enabled || r.moza != nil {
 		return
 	}
-	driver, err := moza.NewDriver(mozaOptionsFromConfig(r.cfg.Moza))
-	if err != nil {
+	options, dev, ok := resolveMoza(r.cfg.Moza)
+	if !ok {
 		if !r.mozaWarned {
-			log.Printf("moza: waiting for wheel on %s: %v", r.cfg.Moza.Port, err)
+			log.Printf("moza: waiting for a wheel to be detected")
 			r.mozaWarned = true
 		}
 		return
 	}
-	log.Printf("moza: connected on %s", r.cfg.Moza.Port)
+	driver, err := moza.NewDriver(options)
+	if err != nil {
+		if !r.mozaWarned {
+			log.Printf("moza: waiting for wheel on %s: %v", options.Port, err)
+			r.mozaWarned = true
+		}
+		return
+	}
+	log.Printf("moza: connected on %s", options.Port)
 	r.mozaWarned = false
 	r.moza = driver
+	r.mozaDevice = dev
 }
 
-func mozaOptionsFromConfig(cfg config.Moza) moza.Options {
+// resolveMoza builds the driver options for a MOZA config, resolving both the
+// serial port and the rev-light count. When cfg.Port is empty it auto-detects
+// the first attached MOZA wheel, so a config may enable MOZA without naming a
+// port. ok is false when MOZA is unusable right now (no port configured and no
+// wheel detected) — a non-fatal "waiting for wheel" state, not an error.
+func resolveMoza(cfg config.Moza) (opts moza.Options, dev moza.Device, ok bool) {
+	port := cfg.Port
+	if port != "" {
+		// Resolve the device behind a configured port (for its identity/profile);
+		// a non-match is fine — the port may be a manual override detection can't see.
+		dev, _ = detectMozaPort(port)
+	} else if devices, _ := moza.Detect(); len(devices) > 0 {
+		dev = devices[0]
+		port = dev.Port
+	}
+	if port == "" {
+		return moza.Options{}, moza.Device{}, false
+	}
+	// Carry the effective port even when detection could not identify the device
+	// (a manual port override), so status and the in-place-apply check are correct.
+	dev.Port = port
+
+	// The rev lights live on the rim, which USB cannot identify (only the base);
+	// the base profile is a best guess. A non-zero cfg.RPMLEDs is the user's
+	// manual rim override and wins.
+	leds := moza.ProfileFor(dev.ProductID, dev.Model).RPMLEDs
+	if cfg.RPMLEDs > 0 {
+		leds = cfg.RPMLEDs
+	}
 	return moza.Options{
-		Port:          cfg.Port,
+		Port:          port,
 		UpdateHz:      cfg.UpdateHz,
 		RPMBrightness: cfg.RPMBrightness,
 		RPMColors:     mozaColorsFromConfig(cfg.RPMColors),
 		ButtonColors:  mozaColorsFromConfig(cfg.ButtonColors),
 		ButtonMask:    cfg.ButtonMask,
+		RPMLEDs:       leds,
+		Protocol:      moza.ParseProtocol(cfg.Protocol),
+	}, dev, true
+}
+
+// detectMozaPort returns the detected USB identity of the device at port, if
+// MOZA detection finds a match. Used both to pick the lighting profile and to
+// label the connected wheel in the dashboard status.
+func detectMozaPort(port string) (moza.Device, bool) {
+	if port == "" {
+		return moza.Device{}, false
 	}
+	devices, err := moza.Detect()
+	if err != nil {
+		return moza.Device{}, false
+	}
+	for _, d := range devices {
+		if d.Port == port {
+			return d, true
+		}
+	}
+	return moza.Device{}, false
 }
 
 func mozaColorsFromConfig(colors [10]config.Color) [10]moza.RGB {

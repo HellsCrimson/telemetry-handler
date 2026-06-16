@@ -50,6 +50,16 @@ type Moza struct {
 	RPMColors     [10]Color `json:"rpm_colors"`
 	ButtonColors  [10]Color `json:"button_colors"`
 	ButtonMask    uint16    `json:"button_mask"`
+	// RPMLEDs manually sets the number of rev-light segments on the wheel rim.
+	// The rim is not identifiable over USB (only the base is), so when the base's
+	// default profile does not match the attached rim, set this to override it.
+	// 0 means "auto" — use the detected base's profile (or the default).
+	RPMLEDs int `json:"rpm_leds,omitempty"`
+	// Protocol selects the rim's LED protocol: "" / "old" for the legacy
+	// telemetry-mask rims (default, unchanged), or "new" for newer rims such as
+	// the ESX whose LEDs live on a separate device and need a channel-config
+	// burst. The rim is not identifiable over USB, so this is a manual choice.
+	Protocol string `json:"protocol,omitempty"`
 }
 
 type Recording struct {
@@ -213,9 +223,9 @@ func (c Config) Validate() error {
 		return fmt.Errorf("print_hz must be greater than 0")
 	}
 	if c.Moza.Enabled {
-		if c.Moza.Port == "" {
-			return fmt.Errorf("moza.port must not be empty when moza.enabled is true")
-		}
+		// Port may be empty: the runtime auto-detects an attached MOZA wheel over
+		// USB, so enabling MOZA without naming a port is valid (it simply means
+		// "use whatever is plugged in").
 		if c.Moza.UpdateHz <= 0 {
 			return fmt.Errorf("moza.update_hz must be greater than 0")
 		}
@@ -224,6 +234,9 @@ func (c Config) Validate() error {
 		}
 		if c.Moza.ButtonMask > 0x03ff {
 			return fmt.Errorf("moza.button_mask must fit the 10 button telemetry bits")
+		}
+		if c.Moza.RPMLEDs < 0 || c.Moza.RPMLEDs > 16 {
+			return fmt.Errorf("moza.rpm_leds must be between 0 (auto) and 16")
 		}
 	}
 	if c.Recording.Dir == "" {

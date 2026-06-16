@@ -7,7 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as forza$0 from "../forza/models.js";
+import * as forza$0 from "../game/forza/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as time$0 from "../../time/models.js";
@@ -78,6 +78,53 @@ export class MonitorInfo {
     static createFrom($$source: any = {}): MonitorInfo {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new MonitorInfo($$parsedSource as Partial<MonitorInfo>);
+    }
+}
+
+/**
+ * MozaStatus reports the MOZA wheel's live state to the dashboard (polled like
+ * the overlay/recording status). Enabled is the config intent; Connected is
+ * whether a driver is actually open. Model/Serial/RPMLEDs are populated from USB
+ * detection when the connected port maps to a known device.
+ */
+export class MozaStatus {
+    "enabled": boolean;
+    "connected": boolean;
+    "port": string;
+    "model": string;
+    "serial": string;
+    "rpm_leds": number;
+
+    /** Creates a new MozaStatus instance. */
+    constructor($$source: Partial<MozaStatus> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("connected" in $$source)) {
+            this["connected"] = false;
+        }
+        if (!("port" in $$source)) {
+            this["port"] = "";
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+        if (!("serial" in $$source)) {
+            this["serial"] = "";
+        }
+        if (!("rpm_leds" in $$source)) {
+            this["rpm_leds"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MozaStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MozaStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MozaStatus($$parsedSource as Partial<MozaStatus>);
     }
 }
 

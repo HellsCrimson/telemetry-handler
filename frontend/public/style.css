@@ -385,6 +385,24 @@ input[type="checkbox"] {
   padding-top: 14px;
 }
 
+.muted {
+  color: var(--muted);
+}
+
+.device-list {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.device-list button {
+  width: 100%;
+  text-align: left;
+}
+
 .grid2 {
   display: grid;
   gap: 10px;

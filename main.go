@@ -23,16 +23,31 @@ var assets embed.FS
 func main() {
 	configPath := flag.String("config", "", "path to JSON config file")
 	mozaTest := flag.Bool("moza-test", false, "run an experimental MOZA wheel light test and exit")
-	mozaPort := flag.String("moza-port", "", "MOZA serial device path for -moza-test, for example /dev/ttyACM1")
+	mozaPort := flag.String("moza-port", "", "MOZA serial device path for -moza-test/-moza-led-probe, for example /dev/ttyACM1")
 	mozaDuration := flag.Duration("moza-test-duration", 10*time.Second, "duration for -moza-test")
+	mozaLEDProbe := flag.Bool("moza-led-probe", false, "light each rev-light segment one at a time to identify the rim's LED layout, then exit")
+	mozaLEDProbeHold := flag.Duration("moza-led-probe-hold", 600*time.Millisecond, "how long to hold each segment during -moza-led-probe")
+	mozaProtocol := flag.String("moza-protocol", "old", "rim LED protocol for -moza-test/-moza-led-probe: \"old\" (legacy rims) or \"new\" (ESX and other newer rims)")
 	flag.Parse()
 
 	if *mozaTest {
 		if *mozaPort == "" {
 			log.Fatal("moza test requires -moza-port, for example -moza-port /dev/ttyACM1")
 		}
-		if err := moza.RunLightTest(*mozaPort, *mozaDuration); err != nil {
+		if err := moza.RunLightTest(*mozaPort, *mozaDuration, moza.ParseProtocol(*mozaProtocol)); err != nil {
 			log.Fatalf("moza test: %v", err)
+		}
+		return
+	}
+
+	if *mozaLEDProbe {
+		if *mozaPort == "" {
+			log.Fatal("moza led probe requires -moza-port, for example -moza-port /dev/ttyACM1")
+		}
+		// Probe the full addressable range so a rim with any segment count is fully
+		// covered; the user counts which physical LEDs respond.
+		if err := moza.RunLEDProbe(*mozaPort, 16, *mozaLEDProbeHold, moza.ParseProtocol(*mozaProtocol)); err != nil {
+			log.Fatalf("moza led probe: %v", err)
 		}
 		return
 	}

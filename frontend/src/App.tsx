@@ -60,6 +60,8 @@ export default function App() {
   const [replayMax, setReplayMax] = useState(5000);
   const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [overlayRunning, setOverlayRunning] = useState(false);
+  const [mozaStatus, setMozaStatus] = useState<any>({ enabled: false, connected: false, port: "", model: "", serial: "", rpm_leds: 0 });
+  const [mozaDevices, setMozaDevices] = useState<any[]>([]);
   const [monitor, setMonitor] = useState<{ width: number; height: number; name: string; detected: boolean }>({
     width: 1920,
     height: 1080,
@@ -177,6 +179,16 @@ export default function App() {
       .catch(() => {});
   }
 
+  function refreshMoza() {
+    Service.GetMozaStatus().then(setMozaStatus).catch(() => {});
+  }
+
+  function detectMoza() {
+    Service.DetectMoza()
+      .then((list: any) => setMozaDevices(Array.isArray(list) ? list : []))
+      .catch(() => setMozaDevices([]));
+  }
+
   function refreshMonitor() {
     Service.GetMonitorInfo()
       .then((m: any) => {
@@ -212,6 +224,8 @@ export default function App() {
     refreshRecordingStatus();
     refreshRecordingList();
     refreshOverlay();
+    refreshMoza();
+    detectMoza();
 
     const telemetryTimer = window.setInterval(() => {
       if (replay.current.active) return;
@@ -222,6 +236,7 @@ export default function App() {
     const statusTimer = window.setInterval(() => {
       refreshRecordingStatus();
       refreshOverlay();
+      refreshMoza();
     }, 1000);
 
     return () => {
@@ -649,19 +664,42 @@ export default function App() {
               <div className="panel">
                 <h2>MOZA Output</h2>
                 <label className="check"><input type="checkbox" checked={config.moza.enabled} onChange={(e) => patch((c) => (c.moza.enabled = e.target.checked))} /> Enabled</label>
-                <label>Serial port <input autoComplete="off" placeholder="/dev/ttyACM1" value={config.moza.port} onChange={(e) => patch((c) => (c.moza.port = e.target.value))} /></label>
+                <label>Serial port <input autoComplete="off" placeholder="auto-detect" value={config.moza.port} onChange={(e) => patch((c) => (c.moza.port = e.target.value))} /></label>
+                <p className="hint">Leave blank to use the detected wheel automatically.</p>
                 <label>Update Hz <input type="number" min={1} step={1} value={config.moza.update_hz} onChange={(e) => patch((c) => (c.moza.update_hz = Number(e.target.value)))} /></label>
                 <label>RPM brightness <input type="range" min={0} max={15} value={config.moza.rpm_brightness} onChange={(e) => patch((c) => (c.moza.rpm_brightness = Number(e.target.value)))} /></label>
+                <label>RPM LEDs (rim) <input type="number" min={0} max={16} value={config.moza.rpm_leds ?? 0} onChange={(e) => patch((c) => (c.moza.rpm_leds = Number(e.target.value)))} /></label>
+                <p className="hint">Rev-light count on the rim. 0 = auto ({mozaStatus.rpm_leds || "default"}). Set this to match your rim if the lights look wrong — the rim model can't be detected over USB.</p>
                 <label>Button mask <input type="number" min={0} max={1023} value={config.moza.button_mask} onChange={(e) => patch((c) => (c.moza.button_mask = Number(e.target.value)))} /></label>
                 <button className="secondary" onClick={previewButtons}>Preview Buttons</button>
               </div>
               <div className="panel">
-                <h2>MOZA Notes</h2>
+                <h2>Connected Wheel</h2>
                 <dl className="kv">
-                  <div><dt>Button mask</dt><dd>0-1023, one bit per telemetry-controlled button light</dd></div>
-                  <div><dt>Preview</dt><dd>Applies colors and button mask without saving config</dd></div>
-                  <div><dt>Apply</dt><dd>Updates the running MOZA driver and dashboard settings</dd></div>
+                  <div><dt>Status</dt><dd>{!mozaStatus.enabled ? "Disabled" : mozaStatus.connected ? "Connected" : "Waiting for wheel…"}</dd></div>
+                  <div><dt>Model</dt><dd>{mozaStatus.connected ? (mozaStatus.model || "Unrecognised MOZA") : "—"}</dd></div>
+                  <div><dt>Serial</dt><dd>{mozaStatus.connected && mozaStatus.serial ? mozaStatus.serial : "—"}</dd></div>
+                  <div><dt>RPM LEDs</dt><dd>{mozaStatus.connected ? mozaStatus.rpm_leds : "—"}</dd></div>
                 </dl>
+                <h3 className="subhead">Detected over USB</h3>
+                <p className="hint">MOZA wheels found on the system. Use one to fill the serial port automatically.</p>
+                {mozaDevices.length === 0 ? (
+                  <p className="hint">No MOZA wheel detected.</p>
+                ) : (
+                  <ul className="device-list">
+                    {mozaDevices.map((d: any) => (
+                      <li key={d.port}>
+                        <button
+                          className={config.moza.port === d.port ? "" : "secondary"}
+                          onClick={() => patch((c) => (c.moza.port = d.port))}
+                        >
+                          {d.model} <span className="muted">· {d.port}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button className="secondary" onClick={detectMoza}>Rescan</button>
               </div>
             </div>
             <section className="colorgrid">

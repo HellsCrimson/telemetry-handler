@@ -104,12 +104,24 @@ func TestValidateRejectsReservedForzaPortRange(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsEnabledMozaWithoutPort(t *testing.T) {
+func TestValidateAcceptsEnabledMozaWithoutPort(t *testing.T) {
+	// An empty port is valid when MOZA is enabled: the runtime auto-detects the
+	// attached wheel over USB, so the port need not be named.
 	cfg := Default()
 	cfg.Moza.Enabled = true
 
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate returned %v, want nil for empty port with auto-detect", err)
+	}
+}
+
+func TestValidateRejectsOutOfRangeRPMLEDs(t *testing.T) {
+	cfg := Default()
+	cfg.Moza.Enabled = true
+	cfg.Moza.RPMLEDs = 99
+
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate returned nil, want error")
+		t.Fatal("Validate returned nil, want error for rpm_leds out of range")
 	}
 }
 

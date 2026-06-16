@@ -24,13 +24,16 @@ import * as config$0 from "../config/models.js";
 import * as engineer$0 from "../engineer/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as wire$0 from "../lmu/wire/models.js";
+import * as wire$0 from "../game/lmu/wire/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as recording$0 from "../recording/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as store$0 from "../store/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as moza$0 from "../wheelbase/moza/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -53,6 +56,17 @@ export function ApplyConfig(cfg: config$0.Config): $CancellablePromise<config$0.
     });
 }
 
+/**
+ * DetectMoza lists the MOZA wheels currently attached over USB so the dashboard
+ * can show what is connected and let the user pick the serial port. Empty when
+ * none are attached (or on platforms without detection).
+ */
+export function DetectMoza(): $CancellablePromise<moza$0.Device[]> {
+    return $Call.ByID(3753523288).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
 export function GetConfig(): $CancellablePromise<config$0.Config> {
     return $Call.ByID(400336676).then(($result: any) => {
         return $$createType1($result);
@@ -61,7 +75,7 @@ export function GetConfig(): $CancellablePromise<config$0.Config> {
 
 export function GetConfigStatus(): $CancellablePromise<$models.ConfigStatus> {
     return $Call.ByID(4163477518).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
     });
 }
 
@@ -74,7 +88,7 @@ export function GetConfigStatus(): $CancellablePromise<$models.ConfigStatus> {
  */
 export function GetEngineerState(): $CancellablePromise<engineer$0.SessionState> {
     return $Call.ByID(1967406312).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -86,7 +100,7 @@ export function GetEngineerState(): $CancellablePromise<engineer$0.SessionState>
  */
 export function GetLatestFrame(): $CancellablePromise<wire$0.Frame | null> {
     return $Call.ByID(4261655122).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -96,25 +110,36 @@ export function GetLatestFrame(): $CancellablePromise<wire$0.Frame | null> {
  */
 export function GetMonitorInfo(): $CancellablePromise<$models.MonitorInfo> {
     return $Call.ByID(239629648).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType8($result);
+    });
+}
+
+/**
+ * GetMozaStatus reports whether the MOZA wheel is connected and, when USB
+ * detection identifies it, its model/serial/rev-light count. Polled by the
+ * dashboard's MOZA section to show live wheel info.
+ */
+export function GetMozaStatus(): $CancellablePromise<$models.MozaStatus> {
+    return $Call.ByID(4221892961).then(($result: any) => {
+        return $$createType9($result);
     });
 }
 
 export function GetOverlayStatus(): $CancellablePromise<$models.OverlayStatus> {
     return $Call.ByID(2207766068).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType10($result);
     });
 }
 
 export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(3118608443).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType11($result);
     });
 }
 
 export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
     return $Call.ByID(3996014961).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType12($result);
     });
 }
 
@@ -124,7 +149,7 @@ export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
  */
 export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRow[]> {
     return $Call.ByID(189090443).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType14($result);
     });
 }
 
@@ -134,13 +159,13 @@ export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRo
  */
 export function ListMonitors(): $CancellablePromise<string[]> {
     return $Call.ByID(4014067021).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType15($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType17($result);
     });
 }
 
@@ -150,7 +175,7 @@ export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
  */
 export function ListSessions(): $CancellablePromise<store$0.SessionRow[]> {
     return $Call.ByID(660293959).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType19($result);
     });
 }
 
@@ -160,7 +185,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType21($result);
     });
 }
 
@@ -188,33 +213,36 @@ export function SetOverlayEnabled(enabled: boolean): $CancellablePromise<void> {
 
 export function StartRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(982748349).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType11($result);
     });
 }
 
 export function StopRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(1374983877).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType11($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = analysis$0.Report.createFrom;
 const $$createType1 = config$0.Config.createFrom;
-const $$createType2 = $models.ConfigStatus.createFrom;
-const $$createType3 = engineer$0.SessionState.createFrom;
-const $$createType4 = wire$0.Frame.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $models.MonitorInfo.createFrom;
-const $$createType7 = $models.OverlayStatus.createFrom;
-const $$createType8 = recording$0.Status.createFrom;
-const $$createType9 = $models.TelemetrySnapshot.createFrom;
-const $$createType10 = store$0.RecordingRow.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = $Create.Array($Create.Any);
-const $$createType13 = recording$0.Info.createFrom;
+const $$createType2 = moza$0.Device.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = $models.ConfigStatus.createFrom;
+const $$createType5 = engineer$0.SessionState.createFrom;
+const $$createType6 = wire$0.Frame.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = $models.MonitorInfo.createFrom;
+const $$createType9 = $models.MozaStatus.createFrom;
+const $$createType10 = $models.OverlayStatus.createFrom;
+const $$createType11 = recording$0.Status.createFrom;
+const $$createType12 = $models.TelemetrySnapshot.createFrom;
+const $$createType13 = store$0.RecordingRow.createFrom;
 const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = store$0.SessionRow.createFrom;
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = $models.ReplaySample.createFrom;
-const $$createType18 = $Create.Array($$createType17);
+const $$createType15 = $Create.Array($Create.Any);
+const $$createType16 = recording$0.Info.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = store$0.SessionRow.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = $models.ReplaySample.createFrom;
+const $$createType21 = $Create.Array($$createType20);

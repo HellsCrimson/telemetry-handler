@@ -54,9 +54,46 @@ func TestRPMMask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := rpmMask(tt.currentRPM, tt.maxRPM); got != tt.want {
+			if got := rpmMask(tt.currentRPM, tt.maxRPM, 10); got != tt.want {
 				t.Fatalf("rpmMask() = %#04x, want %#04x", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRPMMaskLEDCount(t *testing.T) {
+	// A different LED count rescales the bar: full RPM lights every segment, and
+	// a zero/oversized count clamps back into the addressable range.
+	tests := []struct {
+		name string
+		leds int
+		want uint16
+	}{
+		{name: "five leds full", leds: 5, want: 0x001f},
+		{name: "sixteen leds full", leds: 16, want: 0xffff},
+		{name: "zero falls back to default ten", leds: 0, want: 0x03ff},
+		{name: "over max clamps to sixteen", leds: 99, want: 0xffff},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := rpmMask(8000, 8000, tt.leds); got != tt.want {
+				t.Fatalf("rpmMask(full, leds=%d) = %#06x, want %#06x", tt.leds, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProfileFor(t *testing.T) {
+	if p := ProfileFor(0x0006, "MOZA R12 Base"); p.RPMLEDs != 10 {
+		t.Fatalf("R12 profile RPMLEDs = %d, want 10", p.RPMLEDs)
+	}
+	// An unknown product ID falls back to the default profile but keeps the
+	// reported product string so the UI can still name the device.
+	p := ProfileFor(0xabcd, "MOZA RX Base")
+	if p.RPMLEDs != defaultRPMLEDs {
+		t.Fatalf("unknown profile RPMLEDs = %d, want %d", p.RPMLEDs, defaultRPMLEDs)
+	}
+	if p.Model != "MOZA RX Base" {
+		t.Fatalf("unknown profile Model = %q, want %q", p.Model, "MOZA RX Base")
 	}
 }

@@ -21,6 +21,13 @@ type Options struct {
 	RPMColors     [10]RGB
 	ButtonColors  [10]RGB
 	ButtonMask    uint16
+	// RPMLEDs is the wheel's rev-light segment count (Profile.RPMLEDs). Zero
+	// means "use the default", so an Options built without a profile keeps the
+	// historical behaviour.
+	RPMLEDs int
+	// Protocol selects the rim LED protocol (ProtocolOld by default). Newer rims
+	// such as the ESX need ProtocolNew; see protocol_new.go.
+	Protocol Protocol
 }
 
 type Driver struct {
@@ -30,6 +37,13 @@ type Driver struct {
 	lastUpdate time.Time
 	lastMask   uint16
 	buttonMask uint16
+	rpmLEDs    int
+	// protocol/lastMaskNew drive the new-protocol path (see update_new.go).
+	// lastMaskNew starts at an impossible value so the first update always writes.
+	// The colour palette is applied from setupOpts at setup, so it is not stored
+	// separately here.
+	protocol    Protocol
+	lastMaskNew uint32
 	// port and setupOpts let the driver transparently reopen the serial
 	// device after a transient USB failure (see reconnect.go).
 	port       string
@@ -40,24 +54,24 @@ type Driver struct {
 var (
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	procCreateFileW           = kernel32.NewProc("CreateFileW")
-	procCloseHandle           = kernel32.NewProc("CloseHandle")
-	procWriteFile             = kernel32.NewProc("WriteFile")
-	procGetCommState          = kernel32.NewProc("GetCommState")
-	procSetCommState          = kernel32.NewProc("SetCommState")
-	procSetCommTimeouts       = kernel32.NewProc("SetCommTimeouts")
-	procPurgeComm             = kernel32.NewProc("PurgeComm")
-	procGetLastError          = kernel32.NewProc("GetLastError")
+	procCreateFileW     = kernel32.NewProc("CreateFileW")
+	procCloseHandle     = kernel32.NewProc("CloseHandle")
+	procWriteFile       = kernel32.NewProc("WriteFile")
+	procGetCommState    = kernel32.NewProc("GetCommState")
+	procSetCommState    = kernel32.NewProc("SetCommState")
+	procSetCommTimeouts = kernel32.NewProc("SetCommTimeouts")
+	procPurgeComm       = kernel32.NewProc("PurgeComm")
+	procGetLastError    = kernel32.NewProc("GetLastError")
 )
 
 const (
 	invalidHandle = ^syscall.Handle(0)
 
-	genericRead       = 0x80000000
-	genericWrite      = 0x40000000
-	fileShareRead     = 0x00000001
-	fileShareWrite    = 0x00000002
-	openExisting      = 3
+	genericRead         = 0x80000000
+	genericWrite        = 0x40000000
+	fileShareRead       = 0x00000001
+	fileShareWrite      = 0x00000002
+	openExisting        = 3
 	fileAttributeNormal = 0x80
 
 	purgeRxAbort = 0x0002
@@ -69,27 +83,27 @@ const (
 )
 
 type dcb struct {
-	DCBlength uint32
-	BaudRate  uint32
-	Flags     uint32
-	wReserved uint16
-	XonLim    uint16
-	XoffLim   uint16
-	ByteSize  byte
-	Parity    byte
-	StopBits  byte
-	XonChar   byte
-	XoffChar  byte
-	ErrorChar byte
-	EofChar   byte
-	EvtChar   byte
+	DCBlength  uint32
+	BaudRate   uint32
+	Flags      uint32
+	wReserved  uint16
+	XonLim     uint16
+	XoffLim    uint16
+	ByteSize   byte
+	Parity     byte
+	StopBits   byte
+	XonChar    byte
+	XoffChar   byte
+	ErrorChar  byte
+	EofChar    byte
+	EvtChar    byte
 	wReserved1 uint16
 }
 
 type commTimeouts struct {
-	ReadIntervalTimeout        uint32
-	ReadTotalTimeoutMultiplier uint32
-	ReadTotalTimeoutConstant   uint32
+	ReadIntervalTimeout         uint32
+	ReadTotalTimeoutMultiplier  uint32
+	ReadTotalTimeoutConstant    uint32
 	WriteTotalTimeoutMultiplier uint32
 	WriteTotalTimeoutConstant   uint32
 }
@@ -135,8 +149,8 @@ func configureSerial(conn *serialConn) error {
 	// Configure for 115200 baud, 8 data bits, no parity, 1 stop bit
 	dcb.BaudRate = cbr115200
 	dcb.ByteSize = 8
-	dcb.Parity = 0 // NOPARITY
-	dcb.StopBits = 0 // ONESTOPBIT
+	dcb.Parity = 0     // NOPARITY
+	dcb.StopBits = 0   // ONESTOPBIT
 	dcb.Flags = 0x0001 // fBinary
 
 	ok, _, err = procSetCommState.Call(uintptr(conn.handle), uintptr(unsafe.Pointer(&dcb)))
@@ -203,7 +217,7 @@ func (c *serialConn) WriteFrame(frame []byte) error {
 	return nil
 }
 
-func RunLightTest(path string, duration time.Duration) error {
+func RunLightTest(path string, duration time.Duration, protocol Protocol) error {
 	if duration <= 0 {
 		return fmt.Errorf("duration must be greater than zero")
 	}
@@ -213,6 +227,12 @@ func RunLightTest(path string, duration time.Duration) error {
 		return err
 	}
 	defer conn.Close()
+
+	if protocol == ProtocolNew {
+		// Sweep the bar with the default green→red gradient so the rev lights are
+		// obviously responding.
+		return runLightTestNew(conn, defaultRPMGradient(), duration)
+	}
 
 	colors := [10]RGB{}
 	for i := range colors {
@@ -278,12 +298,15 @@ func NewDriver(options Options) (*Driver, error) {
 	}
 
 	driver := &Driver{
-		conn:       conn,
-		updateMin:  time.Duration(float64(time.Second) / options.UpdateHz),
-		lastMask:   ^uint16(0),
-		buttonMask: options.ButtonMask,
-		port:       options.Port,
-		setupOpts:  options,
+		conn:        conn,
+		updateMin:   time.Duration(float64(time.Second) / options.UpdateHz),
+		lastMask:    ^uint16(0),
+		buttonMask:  options.ButtonMask,
+		rpmLEDs:     options.RPMLEDs,
+		protocol:    options.Protocol,
+		lastMaskNew: ^uint32(0),
+		port:        options.Port,
+		setupOpts:   options,
 	}
 	if err := driver.setup(options); err != nil {
 		conn.Close()
@@ -300,17 +323,10 @@ func (d *Driver) Close() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	err := d.writeMasks(0, 0)
-	mode, modeErr := setTelemetryMode(false)
-	if modeErr == nil {
-		modeErr = d.conn.WriteFrame(mode)
-	}
+	err := d.blankLEDs()
 	closeErr := d.conn.Close()
 	if err != nil {
 		return err
-	}
-	if modeErr != nil {
-		return modeErr
 	}
 	return closeErr
 }
@@ -319,7 +335,11 @@ func (d *Driver) UpdateRPM(currentRPM, maxRPM float32) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	mask := rpmMask(currentRPM, maxRPM)
+	if d.protocol == ProtocolNew {
+		return d.updateRPMNew(currentRPM, maxRPM)
+	}
+
+	mask := rpmMask(currentRPM, maxRPM, d.rpmLEDs)
 	now := time.Now()
 	if mask == d.lastMask && now.Sub(d.lastUpdate) < d.updateMin {
 		return nil
@@ -350,14 +370,17 @@ func (d *Driver) Apply(options Options) error {
 	options.ButtonMask &= 0x03ff
 	d.updateMin = time.Duration(float64(time.Second) / options.UpdateHz)
 	d.buttonMask = options.ButtonMask
+	d.rpmLEDs = options.RPMLEDs
+	d.protocol = options.Protocol
 	d.setupOpts = options
 	d.lastMask = ^uint16(0)
+	d.lastMaskNew = ^uint32(0)
 	d.lastUpdate = time.Time{}
 	return d.setup(options)
 }
 
 func (d *Driver) setup(options Options) error {
-	frames, err := setupTelemetryFrames(options.RPMBrightness, options.RPMColors, options.ButtonColors, options.ButtonMask)
+	frames, err := setupFramesFor(options)
 	if err != nil {
 		return err
 	}

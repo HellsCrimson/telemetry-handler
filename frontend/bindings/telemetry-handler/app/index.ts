@@ -9,6 +9,7 @@ export {
 export {
     ConfigStatus,
     MonitorInfo,
+    MozaStatus,
     OverlayStatus,
     ReplaySample,
     TelemetryMeta,
