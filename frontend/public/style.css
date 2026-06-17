@@ -635,3 +635,67 @@ input[type="checkbox"] {
   font-size: 13px;
   margin-top: 4px;
 }
+
+/* MOZA RPM curve editor */
+.curve-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0;
+}
+.curve-field .field-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.curve-editor {
+  width: 100%;
+  max-width: 360px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+.curve-editor .curve-bg {
+  fill: var(--bg);
+}
+.curve-editor .curve-grid line {
+  stroke: var(--line);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+.curve-editor .curve-ref {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.5;
+}
+.curve-editor .curve-line {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 2;
+}
+.curve-editor .curve-handle {
+  fill: var(--text);
+  stroke: var(--blue);
+  stroke-width: 2;
+  cursor: grab;
+}
+.curve-editor .curve-handle.dragging {
+  fill: var(--blue);
+  cursor: grabbing;
+}
+.curve-editor .curve-axis {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.curve-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.curve-presets button {
+  padding: 4px 10px;
+  font-size: 13px;
+}

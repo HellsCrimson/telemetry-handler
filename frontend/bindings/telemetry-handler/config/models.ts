@@ -68,6 +68,35 @@ export class Config {
     }
 }
 
+/**
+ * CurvePoint is one control point of the MOZA rev-light response curve. X is the
+ * input RPM ratio (current/max) and Y the output bar fill, both in [0,1].
+ */
+export class CurvePoint {
+    "x": number;
+    "y": number;
+
+    /** Creates a new CurvePoint instance. */
+    constructor($$source: Partial<CurvePoint> = {}) {
+        if (!("x" in $$source)) {
+            this["x"] = 0;
+        }
+        if (!("y" in $$source)) {
+            this["y"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CurvePoint instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CurvePoint {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CurvePoint($$parsedSource as Partial<CurvePoint>);
+    }
+}
+
 export class Moza {
     "enabled": boolean;
     "port": string;
@@ -94,6 +123,16 @@ export class Moza {
      * silent). The rim is not identifiable over USB, hence the serial probe.
      */
     "protocol"?: string;
+
+    /**
+     * RPMCurvePoints defines the rev-light response curve as control points in
+     * normalised [0,1]×[0,1] space (input RPM ratio → output bar fill), drawn in
+     * the dashboard as a draggable spline (photo-editor "curves" style). The
+     * points are interpolated with a monotone cubic spline. Empty or fewer than
+     * two points means a straight linear response (default, unchanged), so old
+     * configs are unaffected. The dashboard's presets just populate these points.
+     */
+    "rpm_curve_points"?: CurvePoint[];
 
     /** Creates a new Moza instance. */
     constructor($$source: Partial<Moza> = {}) {
@@ -126,7 +165,11 @@ export class Moza {
      * Creates a new Moza instance from a string or object.
      */
     static createFrom($$source: any = {}): Moza {
+        const $$createField9_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("rpm_curve_points" in $$parsedSource) {
+            $$parsedSource["rpm_curve_points"] = $$createField9_0($$parsedSource["rpm_curve_points"]);
+        }
         return new Moza($$parsedSource as Partial<Moza>);
     }
 }
@@ -241,3 +284,5 @@ const $$createType0 = Moza.createFrom;
 const $$createType1 = Recording.createFrom;
 const $$createType2 = Terminal.createFrom;
 const $$createType3 = Overlay.createFrom;
+const $$createType4 = CurvePoint.createFrom;
+const $$createType5 = $Create.Array($$createType4);

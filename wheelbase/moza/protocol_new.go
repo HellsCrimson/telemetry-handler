@@ -114,7 +114,7 @@ const (
 // redlineRatio it returns the redline flash pattern; below it, the bar fills
 // proportionally — scaled so all LEDs are lit by the time RPM reaches the
 // redline (the bar shows a full steady bar just before it starts flashing).
-func rpmMaskValue(currentRPM, maxRPM float32, leds int) uint32 {
+func rpmMaskValue(currentRPM, maxRPM float32, leds int, curve RPMCurve) uint32 {
 	if currentRPM <= 0 || maxRPM <= 0 {
 		return 0
 	}
@@ -123,7 +123,10 @@ func rpmMaskValue(currentRPM, maxRPM float32, leds int) uint32 {
 		return redlineMask
 	}
 	leds = clampRPMLEDs(leds)
-	lit := int(ratio/redlineRatio*float64(leds) + 0.5)
+	// Position within the working band (0..redline), reshaped by the curve so the
+	// lower LEDs can hold across a wider RPM range.
+	pos := curve.apply(ratio / redlineRatio)
+	lit := int(pos*float64(leds) + 0.5)
 	return maskForLit(min(max(lit, 1), leds))
 }
 

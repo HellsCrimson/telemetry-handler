@@ -54,7 +54,7 @@ func TestRPMMask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := rpmMask(tt.currentRPM, tt.maxRPM, 10); got != tt.want {
+			if got := rpmMask(tt.currentRPM, tt.maxRPM, 10, RPMCurve{}); got != tt.want {
 				t.Fatalf("rpmMask() = %#04x, want %#04x", got, tt.want)
 			}
 		})
@@ -76,11 +76,77 @@ func TestRPMMaskLEDCount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := rpmMask(8000, 8000, tt.leds); got != tt.want {
+			if got := rpmMask(8000, 8000, tt.leds, RPMCurve{}); got != tt.want {
 				t.Fatalf("rpmMask(full, leds=%d) = %#06x, want %#06x", tt.leds, got, tt.want)
 			}
 		})
 	}
+}
+
+func TestRPMMaskCurve(t *testing.T) {
+	// A curve that bows below the diagonal (output < input in the mid range)
+	// holds the lower LEDs across a wider RPM band: at 70% RPM it lights fewer
+	// segments than the linear bar, while both agree at the 0% and 100%
+	// endpoints.
+	exp := RPMCurve{Points: []CurvePoint{{0, 0}, {0.5, 0.2}, {1, 1}}}
+
+	linearMid := rpmMask(5600, 8000, 10, RPMCurve{}) // 70% linear
+	expMid := rpmMask(5600, 8000, 10, exp)           // 70% curved
+	if popcount(expMid) >= popcount(linearMid) {
+		t.Fatalf("curve lit %d LEDs at 70%%, want fewer than linear's %d",
+			popcount(expMid), popcount(linearMid))
+	}
+
+	if got := rpmMask(8000, 8000, 10, exp); got != 0x03ff {
+		t.Fatalf("curve full RPM = %#06x, want full bar 0x03ff", got)
+	}
+	if got := rpmMask(0, 8000, 10, exp); got != 0 {
+		t.Fatalf("curve idle = %#06x, want 0", got)
+	}
+}
+
+func TestRPMCurveApply(t *testing.T) {
+	// Endpoints, monotonicity and clamping of the spline.
+	c := RPMCurve{Points: []CurvePoint{{0, 0}, {0.5, 0.2}, {1, 1}}}
+	if got := c.apply(0); got != 0 {
+		t.Fatalf("apply(0) = %v, want 0", got)
+	}
+	if got := c.apply(1); got != 1 {
+		t.Fatalf("apply(1) = %v, want 1", got)
+	}
+	if got := c.apply(0.5); got < 0.19 || got > 0.21 {
+		t.Fatalf("apply(0.5) = %v, want ~0.2 (passes through control point)", got)
+	}
+	prev := -1.0
+	for i := 0; i <= 20; i++ {
+		x := float64(i) / 20
+		y := c.apply(x)
+		if y < 0 || y > 1 {
+			t.Fatalf("apply(%v) = %v out of [0,1]", x, y)
+		}
+		if y < prev-1e-9 {
+			t.Fatalf("curve not monotone at x=%v: %v < %v", x, y, prev)
+		}
+		prev = y
+	}
+	// A flat-topped curve: the bar saturates before max RPM (last point x<1).
+	early := RPMCurve{Points: []CurvePoint{{0, 0}, {0.8, 1}}}
+	if got := early.apply(0.9); got != 1 {
+		t.Fatalf("apply(0.9) past last point = %v, want held at 1", got)
+	}
+	// Empty curve is the identity.
+	if got := (RPMCurve{}).apply(0.42); got != 0.42 {
+		t.Fatalf("empty curve apply(0.42) = %v, want identity 0.42", got)
+	}
+}
+
+func popcount(v uint16) int {
+	n := 0
+	for v != 0 {
+		n += int(v & 1)
+		v >>= 1
+	}
+	return n
 }
 
 func TestProfileFor(t *testing.T) {

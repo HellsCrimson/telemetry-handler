@@ -49,23 +49,25 @@ func setupTelemetryFrames(brightness uint8, rpmColors [10]RGB, buttonColors [10]
 // rpmMask maps the current/max RPM ratio onto a bitmask of lit rev-light
 // segments. leds is the wheel's RPM LED count (see Profile.RPMLEDs); it is
 // clamped into the addressable range so an unset or out-of-range value falls
-// back to the default segment count.
-func rpmMask(currentRPM, maxRPM float32, leds int) uint16 {
+// back to the default segment count. curve reshapes the ratio before it is
+// mapped onto the bar (e.g. to hold the green LEDs across a wider RPM band).
+func rpmMask(currentRPM, maxRPM float32, leds int, curve RPMCurve) uint16 {
 	leds = clampRPMLEDs(leds)
 
 	if currentRPM <= 0 || maxRPM <= 0 {
 		return 0
 	}
 
-	ratio := currentRPM / maxRPM
+	ratio := float64(currentRPM) / float64(maxRPM)
 	if ratio <= 0 {
 		return 0
 	}
 	if ratio > 1 {
 		ratio = 1
 	}
+	ratio = curve.apply(ratio)
 
-	lit := int(ratio * float32(leds))
+	lit := int(ratio * float64(leds))
 	if lit < 1 {
 		lit = 1
 	}

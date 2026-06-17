@@ -20,6 +20,7 @@ import {
 import Chart, { type Highlight } from "./Chart";
 import { TrackVisualizer } from "./TrackVisualizer";
 import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
+import { CurveEditor, presetCurve } from "./CurveEditor";
 import StrategyApp from "./strategy/StrategyApp";
 
 const HISTORY_MS = 120000;
@@ -684,6 +685,20 @@ export default function App() {
                 <label>RPM brightness <input type="range" min={0} max={15} value={config.moza.rpm_brightness} onChange={(e) => patch((c) => (c.moza.rpm_brightness = Number(e.target.value)))} /></label>
                 <label>RPM LEDs (rim) <input type="number" min={0} max={16} value={config.moza.rpm_leds ?? 0} onChange={(e) => patch((c) => (c.moza.rpm_leds = Number(e.target.value)))} /></label>
                 <p className="hint">Rev-light count on the rim. 0 = auto ({mozaStatus.rpm_leds || "default"}). Set this to match your rim if the lights look wrong — the rim model can't be detected over USB.</p>
+                <div className="curve-field">
+                  <span className="field-label">RPM curve</span>
+                  <CurveEditor
+                    points={config.moza.rpm_curve_points ?? []}
+                    colors={config.moza.rpm_colors}
+                    onChange={(pts) => patch((c) => (c.moza.rpm_curve_points = pts))}
+                  />
+                  <div className="curve-presets">
+                    {[["linear", "Linear"], ["exponential", "Exponential"], ["logarithmic", "Logarithmic"], ["scurve", "S-curve"]].map(([id, label]) => (
+                      <button key={id} type="button" className="secondary" onClick={() => patch((c) => (c.moza.rpm_curve_points = presetCurve(id)))}>{label}</button>
+                    ))}
+                  </div>
+                  <p className="hint">How RPM maps onto the rev-light bar (left = idle, right = max RPM; the colour strip shows where each LED sits). <strong>Drag</strong> a point to bend the curve, <strong>click</strong> empty space to add one, <strong>double-click</strong> to remove. Bow the curve below the diagonal to keep the green LEDs lit across a wider RPM range and squeeze red + redline into a small window near the top — handy when the engine rarely reaches 100% RPM. Presets just seed the points.</p>
+                </div>
                 <label>Button mask <input type="number" min={0} max={1023} value={config.moza.button_mask} onChange={(e) => patch((c) => (c.moza.button_mask = Number(e.target.value)))} /></label>
                 <div className="actions">
                   <button className="secondary" onClick={previewButtons}>Preview Buttons</button>

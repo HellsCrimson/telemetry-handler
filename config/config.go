@@ -62,6 +62,20 @@ type Moza struct {
 	// controller, device 0x18, answers a model-code query; legacy rims stay
 	// silent). The rim is not identifiable over USB, hence the serial probe.
 	Protocol string `json:"protocol,omitempty"`
+	// RPMCurvePoints defines the rev-light response curve as control points in
+	// normalised [0,1]×[0,1] space (input RPM ratio → output bar fill), drawn in
+	// the dashboard as a draggable spline (photo-editor "curves" style). The
+	// points are interpolated with a monotone cubic spline. Empty or fewer than
+	// two points means a straight linear response (default, unchanged), so old
+	// configs are unaffected. The dashboard's presets just populate these points.
+	RPMCurvePoints []CurvePoint `json:"rpm_curve_points,omitempty"`
+}
+
+// CurvePoint is one control point of the MOZA rev-light response curve. X is the
+// input RPM ratio (current/max) and Y the output bar fill, both in [0,1].
+type CurvePoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
 }
 
 type Recording struct {
@@ -239,6 +253,16 @@ func (c Config) Validate() error {
 		}
 		if c.Moza.RPMLEDs < 0 || c.Moza.RPMLEDs > 16 {
 			return fmt.Errorf("moza.rpm_leds must be between 0 (auto) and 16")
+		}
+		var prevX float64
+		for i, pt := range c.Moza.RPMCurvePoints {
+			if pt.X < 0 || pt.X > 1 || pt.Y < 0 || pt.Y > 1 {
+				return fmt.Errorf("moza.rpm_curve_points[%d] must be within [0,1]×[0,1]", i)
+			}
+			if i > 0 && pt.X <= prevX {
+				return fmt.Errorf("moza.rpm_curve_points must have strictly increasing x")
+			}
+			prevX = pt.X
 		}
 	}
 	if c.Recording.Dir == "" {

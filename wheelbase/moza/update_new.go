@@ -13,7 +13,7 @@ import (
 // LEDs are lit. Callers already hold d.mu. It throttles on the lit count (the
 // only thing that changes the bar) plus updateMin, matching the legacy path.
 func (d *Driver) updateRPMNew(currentRPM, maxRPM float32) error {
-	mask := rpmMaskValue(currentRPM, maxRPM, d.rpmLEDs)
+	mask := rpmMaskValue(currentRPM, maxRPM, d.rpmLEDs, d.curve)
 	now := time.Now()
 	if mask == d.lastMaskNew && now.Sub(d.lastUpdate) < d.updateMin {
 		return nil

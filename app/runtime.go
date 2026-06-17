@@ -752,6 +752,7 @@ func resolveMoza(cfg config.Moza) (opts moza.Options, dev moza.Device, ok bool) 
 		ButtonMask:    cfg.ButtonMask,
 		RPMLEDs:       leds,
 		Protocol:      protocol,
+		RPMCurve:      mozaCurveFromConfig(cfg),
 	}, dev, true
 }
 
@@ -780,4 +781,17 @@ func mozaColorsFromConfig(colors [10]config.Color) [10]moza.RGB {
 		out[i] = moza.RGB{R: color[0], G: color[1], B: color[2]}
 	}
 	return out
+}
+
+// mozaCurveFromConfig maps the config's rev-light control points onto the moza
+// driver's RPMCurve. Fewer than two points yields the zero value (linear).
+func mozaCurveFromConfig(cfg config.Moza) moza.RPMCurve {
+	if len(cfg.RPMCurvePoints) < 2 {
+		return moza.RPMCurve{}
+	}
+	pts := make([]moza.CurvePoint, len(cfg.RPMCurvePoints))
+	for i, p := range cfg.RPMCurvePoints {
+		pts[i] = moza.CurvePoint{X: p.X, Y: p.Y}
+	}
+	return moza.RPMCurve{Points: pts}
 }

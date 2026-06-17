@@ -137,19 +137,19 @@ func TestSetRPMMaskNewMatchesCapture(t *testing.T) {
 
 func TestRPMMaskValueRedline(t *testing.T) {
 	// Below redline: cumulative lit mask.
-	if got := rpmMaskValue(4000, 8000, 10); got != 0x1f {
+	if got := rpmMaskValue(4000, 8000, 10, RPMCurve{}); got != 0x1f {
 		t.Errorf("half RPM = %#x, want 0x1f", got)
 	}
 	// Full bar but not yet at the redline ratio.
-	if got := rpmMaskValue(7800, 8000, 10); got != 0x3ff {
+	if got := rpmMaskValue(7800, 8000, 10, RPMCurve{}); got != 0x3ff {
 		t.Errorf("near-full RPM = %#x, want 0x3ff (steady full bar)", got)
 	}
 	// At/above redline: the flash pattern.
-	if got := rpmMaskValue(8000, 8000, 10); got != redlineMask {
+	if got := rpmMaskValue(8000, 8000, 10, RPMCurve{}); got != redlineMask {
 		t.Errorf("redline = %#x, want %#x", got, redlineMask)
 	}
 	// Engine off: no LEDs.
-	if got := rpmMaskValue(0, 8000, 10); got != 0 {
+	if got := rpmMaskValue(0, 8000, 10, RPMCurve{}); got != 0 {
 		t.Errorf("idle = %#x, want 0", got)
 	}
 }

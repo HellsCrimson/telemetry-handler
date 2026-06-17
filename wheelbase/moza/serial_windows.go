@@ -28,6 +28,8 @@ type Options struct {
 	// Protocol selects the rim LED protocol (ProtocolOld by default). Newer rims
 	// such as the ESX need ProtocolNew; see protocol_new.go.
 	Protocol Protocol
+	// RPMCurve reshapes the RPM→LED mapping (linear by default; see curve.go).
+	RPMCurve RPMCurve
 }
 
 type Driver struct {
@@ -38,6 +40,7 @@ type Driver struct {
 	lastMask   uint16
 	buttonMask uint16
 	rpmLEDs    int
+	curve      RPMCurve
 	// protocol/lastMaskNew drive the new-protocol path (see update_new.go).
 	// lastMaskNew starts at an impossible value so the first update always writes.
 	// The colour palette is applied from setupOpts at setup, so it is not stored
@@ -324,6 +327,7 @@ func NewDriver(options Options) (*Driver, error) {
 		lastMask:    ^uint16(0),
 		buttonMask:  options.ButtonMask,
 		rpmLEDs:     options.RPMLEDs,
+		curve:       options.RPMCurve,
 		protocol:    options.Protocol,
 		lastMaskNew: ^uint32(0),
 		port:        options.Port,
@@ -360,7 +364,7 @@ func (d *Driver) UpdateRPM(currentRPM, maxRPM float32) error {
 		return d.updateRPMNew(currentRPM, maxRPM)
 	}
 
-	mask := rpmMask(currentRPM, maxRPM, d.rpmLEDs)
+	mask := rpmMask(currentRPM, maxRPM, d.rpmLEDs, d.curve)
 	now := time.Now()
 	if mask == d.lastMask && now.Sub(d.lastUpdate) < d.updateMin {
 		return nil
@@ -392,6 +396,7 @@ func (d *Driver) Apply(options Options) error {
 	d.updateMin = time.Duration(float64(time.Second) / options.UpdateHz)
 	d.buttonMask = options.ButtonMask
 	d.rpmLEDs = options.RPMLEDs
+	d.curve = options.RPMCurve
 	d.protocol = options.Protocol
 	d.setupOpts = options
 	d.lastMask = ^uint16(0)

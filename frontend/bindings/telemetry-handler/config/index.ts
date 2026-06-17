@@ -3,6 +3,7 @@
 
 export {
     Config,
+    CurvePoint,
     Moza,
     Overlay,
     Recording,
