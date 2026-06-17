@@ -184,12 +184,16 @@ type Standing struct {
 // PitMenuItem is one row of the in-game pit menu (/rest/garage/PitMenu/
 // receivePitMenu): a setting name, its current/default index, and the list of
 // selectable option labels (e.g. the VIRTUAL ENERGY rows "31% 6 laps").
+//
+// The JSON tags are the clean shape sent OUT to the frontend; the game's own wire
+// keys ("PMC Value", "currentSetting", settings-as-{text}-objects) are read by the
+// custom UnmarshalJSON below, so the input keys and these output tags are decoupled.
 type PitMenuItem struct {
 	Name           string   `json:"name"`
-	PMCValue       int      `json:"PMC Value"`
-	CurrentSetting int      `json:"currentSetting"`
+	PMCValue       int      `json:"pmc"`
+	CurrentSetting int      `json:"current_setting"`
 	Default        int      `json:"default"`
-	Settings       []string `json:"-"`
+	Settings       []string `json:"settings"`
 }
 
 // pitMenuItemRaw matches the wire shape (settings are objects with a "text"
@@ -249,7 +253,7 @@ func (c *Client) Fetch(ctx context.Context, now time.Time) Snapshot {
 	if v, err := c.standings(ctx); err == nil {
 		snap.Standings = v
 	}
-	if v, err := c.pitMenu(ctx); err == nil {
+	if v, err := c.PitMenu(ctx); err == nil {
 		snap.PitMenu = v
 	}
 	return snap
@@ -314,7 +318,10 @@ func (c *Client) standings(ctx context.Context) ([]Standing, error) {
 	return out, nil
 }
 
-func (c *Client) pitMenu(ctx context.Context) ([]PitMenuItem, error) {
+// PitMenu reads the current in-game pit menu (every component with its selectable
+// option labels and the selected index). Used both for the strategy snapshot and
+// as the read side of editing the menu (see SetPitMenuValue in write.go).
+func (c *Client) PitMenu(ctx context.Context) ([]PitMenuItem, error) {
 	var out []PitMenuItem
 	if err := c.getJSON(ctx, "/rest/garage/PitMenu/receivePitMenu", &out); err != nil {
 		return nil, err

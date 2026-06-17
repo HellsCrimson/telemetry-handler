@@ -496,6 +496,42 @@ func (s *Service) GetSetupList() ([]rest.SetupFile, error) {
 	return s.lmuClient.SetupList(ctx)
 }
 
+// SetSetupValue changes one setup setting (by its VM_*/WM_* key) to a step index,
+// writing it to LMU via the REST API. Only effective in the garage. The frontend
+// calls it from the editable Setup sheet; it should re-fetch GetCarSetup after to
+// pick up the resulting string value (the game may clamp).
+func (s *Service) SetSetupValue(key string, value int) error {
+	if s.lmuClient == nil {
+		return fmt.Errorf("LMU REST polling is disabled")
+	}
+	ctx, cancel := context.WithTimeout(s.requestContext(), lmuRESTTimeout)
+	defer cancel()
+	return s.lmuClient.SetSetupValue(ctx, key, value)
+}
+
+// GetPitMenu returns the current in-game pit menu (each component with its
+// selectable option labels and selected index), for the editable pit-menu panel.
+func (s *Service) GetPitMenu() ([]rest.PitMenuItem, error) {
+	if s.lmuClient == nil {
+		return nil, fmt.Errorf("LMU REST polling is disabled")
+	}
+	ctx, cancel := context.WithTimeout(s.requestContext(), lmuRESTTimeout)
+	defer cancel()
+	return s.lmuClient.PitMenu(ctx)
+}
+
+// SetPitMenuValue selects option index currentSetting on the pit-menu component
+// identified by pmc (its "PMC Value" from GetPitMenu). The client round-trips the
+// whole menu as a JSON array (a bare object crashes the game).
+func (s *Service) SetPitMenuValue(pmc int, currentSetting int) error {
+	if s.lmuClient == nil {
+		return fmt.Errorf("LMU REST polling is disabled")
+	}
+	ctx, cancel := context.WithTimeout(s.requestContext(), lmuRESTTimeout)
+	defer cancel()
+	return s.lmuClient.SetPitMenuValue(ctx, pmc, currentSetting)
+}
+
 // requestContext returns the service context for a bound call, falling back to
 // Background before startup has stored one.
 func (s *Service) requestContext() context.Context {

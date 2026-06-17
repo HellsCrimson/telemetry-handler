@@ -268,26 +268,34 @@ export class PitEstimate {
  * PitMenuItem is one row of the in-game pit menu (/rest/garage/PitMenu/
  * receivePitMenu): a setting name, its current/default index, and the list of
  * selectable option labels (e.g. the VIRTUAL ENERGY rows "31% 6 laps").
+ * 
+ * The JSON tags are the clean shape sent OUT to the frontend; the game's own wire
+ * keys ("PMC Value", "currentSetting", settings-as-{text}-objects) are read by the
+ * custom UnmarshalJSON below, so the input keys and these output tags are decoupled.
  */
 export class PitMenuItem {
     "name": string;
-    "PMC Value": number;
-    "currentSetting": number;
+    "pmc": number;
+    "current_setting": number;
     "default": number;
+    "settings": string[];
 
     /** Creates a new PitMenuItem instance. */
     constructor($$source: Partial<PitMenuItem> = {}) {
         if (!("name" in $$source)) {
             this["name"] = "";
         }
-        if (!("PMC Value" in $$source)) {
-            this["PMC Value"] = 0;
+        if (!("pmc" in $$source)) {
+            this["pmc"] = 0;
         }
-        if (!("currentSetting" in $$source)) {
-            this["currentSetting"] = 0;
+        if (!("current_setting" in $$source)) {
+            this["current_setting"] = 0;
         }
         if (!("default" in $$source)) {
             this["default"] = 0;
+        }
+        if (!("settings" in $$source)) {
+            this["settings"] = [];
         }
 
         Object.assign(this, $$source);
@@ -297,7 +305,11 @@ export class PitMenuItem {
      * Creates a new PitMenuItem instance from a string or object.
      */
     static createFrom($$source: any = {}): PitMenuItem {
+        const $$createField4_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("settings" in $$parsedSource) {
+            $$parsedSource["settings"] = $$createField4_0($$parsedSource["settings"]);
+        }
         return new PitMenuItem($$parsedSource as Partial<PitMenuItem>);
     }
 }
@@ -410,7 +422,7 @@ export class SetupGroup {
      * Creates a new SetupGroup instance from a string or object.
      */
     static createFrom($$source: any = {}): SetupGroup {
-        const $$createField1_0 = $$createType6;
+        const $$createField1_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("settings" in $$parsedSource) {
             $$parsedSource["settings"] = $$createField1_0($$parsedSource["settings"]);
@@ -511,13 +523,13 @@ export class Snapshot {
      * Creates a new Snapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): Snapshot {
-        const $$createField3_0 = $$createType8;
-        const $$createField4_0 = $$createType10;
-        const $$createField5_0 = $$createType13;
-        const $$createField6_0 = $$createType15;
-        const $$createField7_0 = $$createType17;
-        const $$createField8_0 = $$createType19;
-        const $$createField9_0 = $$createType21;
+        const $$createField3_0 = $$createType9;
+        const $$createField4_0 = $$createType11;
+        const $$createField5_0 = $$createType14;
+        const $$createField6_0 = $$createType16;
+        const $$createField7_0 = $$createType18;
+        const $$createField8_0 = $$createType20;
+        const $$createField9_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("game_state" in $$parsedSource) {
             $$parsedSource["game_state"] = $$createField3_0($$parsedSource["game_state"]);
@@ -748,20 +760,21 @@ const $$createType1 = SetupGroup.createFrom;
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = ForecastValue.createFrom;
 const $$createType4 = $Create.Map($Create.Any, $$createType3);
-const $$createType5 = SetupSetting.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = GameState.createFrom;
-const $$createType8 = $Create.Nullable($$createType7);
-const $$createType9 = PitEstimate.createFrom;
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = UsageEntry.createFrom;
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = $Create.Map($Create.Any, $$createType12);
-const $$createType14 = VehicleCondition.createFrom;
-const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = ForecastNode.createFrom;
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = Standing.createFrom;
-const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = PitMenuItem.createFrom;
-const $$createType21 = $Create.Array($$createType20);
+const $$createType5 = $Create.Array($Create.Any);
+const $$createType6 = SetupSetting.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = GameState.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = PitEstimate.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = UsageEntry.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = $Create.Map($Create.Any, $$createType13);
+const $$createType15 = VehicleCondition.createFrom;
+const $$createType16 = $Create.Nullable($$createType15);
+const $$createType17 = ForecastNode.createFrom;
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = Standing.createFrom;
+const $$createType20 = $Create.Array($$createType19);
+const $$createType21 = PitMenuItem.createFrom;
+const $$createType22 = $Create.Array($$createType21);

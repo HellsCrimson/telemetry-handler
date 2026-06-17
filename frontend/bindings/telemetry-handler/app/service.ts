@@ -148,9 +148,19 @@ export function GetOverlayStatus(): $CancellablePromise<$models.OverlayStatus> {
     });
 }
 
+/**
+ * GetPitMenu returns the current in-game pit menu (each component with its
+ * selectable option labels and selected index), for the editable pit-menu panel.
+ */
+export function GetPitMenu(): $CancellablePromise<rest$0.PitMenuItem[]> {
+    return $Call.ByID(3099330100).then(($result: any) => {
+        return $$createType14($result);
+    });
+}
+
 export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(3118608443).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType15($result);
     });
 }
 
@@ -160,7 +170,7 @@ export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
  */
 export function GetSetupList(): $CancellablePromise<rest$0.SetupFile[]> {
     return $Call.ByID(44972655).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType17($result);
     });
 }
 
@@ -174,13 +184,13 @@ export function GetSetupList(): $CancellablePromise<rest$0.SetupFile[]> {
  */
 export function GetStrategyData(): $CancellablePromise<rest$0.Snapshot | null> {
     return $Call.ByID(2558008555).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType19($result);
     });
 }
 
 export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
     return $Call.ByID(3996014961).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType20($result);
     });
 }
 
@@ -190,7 +200,7 @@ export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
  */
 export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRow[]> {
     return $Call.ByID(189090443).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType22($result);
     });
 }
 
@@ -200,13 +210,13 @@ export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRo
  */
 export function ListMonitors(): $CancellablePromise<string[]> {
     return $Call.ByID(4014067021).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType23($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType25($result);
     });
 }
 
@@ -216,7 +226,7 @@ export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
  */
 export function ListSessions(): $CancellablePromise<store$0.SessionRow[]> {
     return $Call.ByID(660293959).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType27($result);
     });
 }
 
@@ -226,7 +236,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType29($result);
     });
 }
 
@@ -252,15 +262,34 @@ export function SetOverlayEnabled(enabled: boolean): $CancellablePromise<void> {
     return $Call.ByID(1172459, enabled);
 }
 
+/**
+ * SetPitMenuValue selects option index currentSetting on the pit-menu component
+ * identified by pmc (its "PMC Value" from GetPitMenu). The client round-trips the
+ * whole menu as a JSON array (a bare object crashes the game).
+ */
+export function SetPitMenuValue(pmc: number, currentSetting: number): $CancellablePromise<void> {
+    return $Call.ByID(1665980033, pmc, currentSetting);
+}
+
+/**
+ * SetSetupValue changes one setup setting (by its VM_* /WM_* key) to a step index,
+ * writing it to LMU via the REST API. Only effective in the garage. The frontend
+ * calls it from the editable Setup sheet; it should re-fetch GetCarSetup after to
+ * pick up the resulting string value (the game may clamp).
+ */
+export function SetSetupValue(key: string, value: number): $CancellablePromise<void> {
+    return $Call.ByID(1509525744, key, value);
+}
+
 export function StartRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(982748349).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType15($result);
     });
 }
 
 export function StopRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(1374983877).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType15($result);
     });
 }
 
@@ -287,18 +316,20 @@ const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = $models.MonitorInfo.createFrom;
 const $$createType11 = $models.MozaStatus.createFrom;
 const $$createType12 = $models.OverlayStatus.createFrom;
-const $$createType13 = recording$0.Status.createFrom;
-const $$createType14 = rest$0.SetupFile.createFrom;
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = rest$0.Snapshot.createFrom;
-const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = $models.TelemetrySnapshot.createFrom;
-const $$createType19 = store$0.RecordingRow.createFrom;
-const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $Create.Array($Create.Any);
-const $$createType22 = recording$0.Info.createFrom;
-const $$createType23 = $Create.Array($$createType22);
-const $$createType24 = store$0.SessionRow.createFrom;
+const $$createType13 = rest$0.PitMenuItem.createFrom;
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = recording$0.Status.createFrom;
+const $$createType16 = rest$0.SetupFile.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = rest$0.Snapshot.createFrom;
+const $$createType19 = $Create.Nullable($$createType18);
+const $$createType20 = $models.TelemetrySnapshot.createFrom;
+const $$createType21 = store$0.RecordingRow.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = $Create.Array($Create.Any);
+const $$createType24 = recording$0.Info.createFrom;
 const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = $models.ReplaySample.createFrom;
+const $$createType26 = store$0.SessionRow.createFrom;
 const $$createType27 = $Create.Array($$createType26);
+const $$createType28 = $models.ReplaySample.createFrom;
+const $$createType29 = $Create.Array($$createType28);

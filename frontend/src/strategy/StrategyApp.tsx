@@ -17,7 +17,7 @@ import TrackCircle from "./components/TrackCircle";
 import WeatherPanel from "./components/WeatherPanel";
 import PitParameters from "./components/PitParameters";
 import PitStopEstimate from "./components/PitStopEstimate";
-import PitMenuPanel from "./components/PitMenuPanel";
+import PitMenuEditor from "./components/PitMenuEditor";
 import WeatherForecast from "./components/WeatherForecast";
 import UndercutOvercut from "./components/UndercutOvercut";
 import EventTimeline from "./components/EventTimeline";
@@ -105,7 +105,7 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
               <PitParameters state={state} safetyLaps={settings.safetyLaps} />
               <PitStopEstimate strategy={state.strategy} />
               <UndercutOvercut state={state} pitLossSeconds={settings.pitLossSeconds} />
-              <PitMenuPanel menu={state.strategy.pit_menu} />
+              <PitMenuEditor />
               <WeatherPanel weather={state.weather} />
               <WeatherForecast forecast={state.strategy.forecast} />
             </div>
