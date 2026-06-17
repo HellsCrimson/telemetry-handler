@@ -1,8 +1,9 @@
 // CarManagement recaps the player car's systems: powertrain temps, hybrid/energy,
 // aero & suspension, driver aids and damage. Everything here is instantaneous
 // (straight from the latest frame's PlayerDetail), so no engine accumulation is
-// needed. Note: ARB stiffness and live setup values are NOT in the LMU telemetry,
-// so "Roll bars" and setup-change proposals can't be shown (see STRATEGY_WORKFLOW).
+// needed. The static setup values (ARB stiffness, springs, gearing, wings) are NOT
+// in the telemetry frame — they are read separately from LMU's REST API and shown
+// on the dedicated Setup tab.
 import { type SessionState, playerCar, avgTemp } from "../model";
 
 const ELECTRIC_STATE = ["Unavailable", "Inactive", "Propulsion", "Regen"];
@@ -63,7 +64,7 @@ export default function CarManagement({ state }: { state: SessionState }) {
             <span key={i} className={`strat-dent strat-dent-${sev}`} title={`Panel ${i + 1}: ${["none", "minor", "major"][sev] ?? sev}`} />
           ))}
         </div>
-        <p className="muted strat-axis-note">Each block is a body panel; amber = minor, red = major. ARB / setup values aren’t exposed by LMU.</p>
+        <p className="muted strat-axis-note">Each block is a body panel; amber = minor, red = major. Static setup values are on the Setup tab.</p>
       </section>
 
       <section className="strat-group">

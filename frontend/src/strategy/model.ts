@@ -35,6 +35,15 @@ export type ForecastPoint = GoForecastPoint;
 export type DriverUsage = GoDriverUsage;
 export type PitMenuEntry = GoPitMenuEntry;
 
+// Setup types come from the rest bindings — they are fetched on demand (not part
+// of the per-frame SessionState) since the setup only changes in the garage.
+export type {
+  CarSetup,
+  SetupGroup,
+  SetupSetting,
+  SetupFile,
+} from "../../bindings/telemetry-handler/game/lmu/rest";
+
 // CLASS_COLORS maps the common LMU/endurance classes to distinct colours so the
 // circle reads at a glance. Unknown classes fall back to a stable hashed colour.
 const CLASS_COLORS: Record<string, string> = {

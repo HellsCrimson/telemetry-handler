@@ -65,6 +65,11 @@ type Service struct {
 	overlay *overlay.Manager
 	ctx     context.Context
 
+	// lmuClient talks to LMU's local REST API. It is created at startup when LMU
+	// polling is enabled and shared by the poller and the on-demand setup bindings;
+	// nil when LMU polling is disabled.
+	lmuClient *rest.Client
+
 	// overlayDesired is the user's on/off intent (the UI toggle). The actual
 	// native window is started/stopped by the supervisor only while the game is
 	// also sending telemetry.
@@ -126,6 +131,7 @@ func (s *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 		go s.superviseReference(ctx)
 	}
 	if cfg.LMU.Enabled {
+		s.lmuClient = rest.NewClient(cfg.LMU.BaseURL, lmuRESTTimeout)
 		go s.superviseREST(ctx, cfg.LMU)
 	}
 
@@ -212,7 +218,6 @@ func (s *Service) superviseOverlay(ctx context.Context) {
 // also only serves data in an active session — Fetch returns an unavailable
 // snapshot otherwise, which clears the overlay.
 func (s *Service) superviseREST(ctx context.Context, cfg config.LMU) {
-	client := rest.NewClient(cfg.BaseURL, lmuRESTTimeout)
 	every := time.Second
 	if cfg.PollHz > 0 {
 		every = time.Duration(float64(time.Second) / cfg.PollHz)
@@ -230,7 +235,7 @@ func (s *Service) superviseREST(ctx context.Context, cfg config.LMU) {
 				}
 				continue
 			}
-			snap := client.Fetch(ctx, time.Now())
+			snap := s.lmuClient.Fetch(ctx, time.Now())
 			s.runtime.SetRESTData(&snap)
 		}
 	}
@@ -463,6 +468,41 @@ func (s *Service) GetEngineerState() engineer.SessionState {
 // polls it for the Strategy Planner's richer views.
 func (s *Service) GetStrategyData() *rest.Snapshot {
 	return s.runtime.RESTData()
+}
+
+// GetCarSetup fetches the player car's active setup from LMU's REST API on demand
+// (the full garage setup sheet: aero, suspension, gearing, tyres, brakes, engine
+// maps), data the shared-memory telemetry does not expose. It is fetched live
+// rather than polled because the setup only changes in the garage, not during a
+// stint. Errors when LMU polling is disabled or the API is unreachable / not in a
+// state that serves the garage; the frontend surfaces that as "setup unavailable".
+func (s *Service) GetCarSetup() (*rest.CarSetup, error) {
+	if s.lmuClient == nil {
+		return nil, fmt.Errorf("LMU REST polling is disabled")
+	}
+	ctx, cancel := context.WithTimeout(s.requestContext(), lmuRESTTimeout)
+	defer cancel()
+	return s.lmuClient.Setup(ctx)
+}
+
+// GetSetupList returns the saved setups available for the current car (for a
+// future setup picker). Errors as GetCarSetup does.
+func (s *Service) GetSetupList() ([]rest.SetupFile, error) {
+	if s.lmuClient == nil {
+		return nil, fmt.Errorf("LMU REST polling is disabled")
+	}
+	ctx, cancel := context.WithTimeout(s.requestContext(), lmuRESTTimeout)
+	defer cancel()
+	return s.lmuClient.SetupList(ctx)
+}
+
+// requestContext returns the service context for a bound call, falling back to
+// Background before startup has stored one.
+func (s *Service) requestContext() context.Context {
+	if s.ctx != nil {
+		return s.ctx
+	}
+	return context.Background()
 }
 
 // SetComparisonCar tells the strategy engine which rival to buffer a driven line

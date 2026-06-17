@@ -520,3 +520,71 @@
   color: var(--blue);
   font-weight: 600;
 }
+
+/* Setup tab — the active setup sheet read from the REST API */
+.strat-setup-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.strat-setup-bar strong {
+  font-size: 16px;
+}
+.strat-setup-bar p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.strat-setup-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--yellow) 22%, transparent);
+  color: var(--yellow);
+  vertical-align: middle;
+}
+.strat-setup-badge.fixed {
+  background: color-mix(in srgb, var(--blue) 22%, transparent);
+  color: var(--blue);
+}
+.strat-setup-group h3 {
+  position: sticky;
+  top: 0;
+}
+.strat-setup-list {
+  margin: 0;
+}
+.strat-setup-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+}
+.strat-setup-row:first-child {
+  border-top: none;
+}
+.strat-setup-row dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.strat-setup-row dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.strat-setup-row.changed dd {
+  color: var(--yellow);
+}
+.strat-setup-row dd small {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 11px;
+}

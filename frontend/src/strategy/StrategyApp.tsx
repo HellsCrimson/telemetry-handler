@@ -25,6 +25,7 @@ import LiveData from "./tabs/LiveData";
 import DriverCoaching from "./tabs/DriverCoaching";
 import CarManagement from "./tabs/CarManagement";
 import DriverVs from "./tabs/DriverVs";
+import SetupSheet from "./tabs/SetupSheet";
 import History from "./tabs/History";
 import StrategySettings from "./tabs/StrategySettings";
 
@@ -37,6 +38,7 @@ const TABS = [
   ["vs", "Driver Vs."],
   ["coaching", "Driver Coaching"],
   ["car", "Car Management"],
+  ["setup", "Setup"],
   ["history", "History"],
   ["settings", "Settings"],
 ] as const;
@@ -91,7 +93,7 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
       </nav>
 
       <main>
-        {!available && activeTab !== "history" && activeTab !== "settings" && (
+        {!available && activeTab !== "history" && activeTab !== "settings" && activeTab !== "setup" && (
           <p className="muted">No live session. Start Le Mans Ultimate (with the lmu-bridge sidecar) or replay an LMU recording.</p>
         )}
 
@@ -113,10 +115,11 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
         {available && state && activeTab === "car" && <CarManagement state={state} />}
         {available && state && activeTab === "vs" && <DriverVs state={state} />}
 
+        {activeTab === "setup" && <SetupSheet />}
         {activeTab === "history" && <History />}
         {activeTab === "settings" && <StrategySettings settings={settings} update={updateSettings} />}
 
-        {available && state && activeTab !== "history" && <EventTimeline events={state.events} />}
+        {available && state && activeTab !== "history" && activeTab !== "setup" && <EventTimeline events={state.events} />}
       </main>
     </div>
   );

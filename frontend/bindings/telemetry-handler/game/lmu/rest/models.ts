@@ -10,6 +10,70 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as time$0 from "../../../../time/models.js";
 
 /**
+ * CarSetup is the player car's active setup, read from /rest/garage/summary. This
+ * is data the rF2 shared memory does not expose at all — the engine's balance
+ * advisory is a slip-telemetry heuristic precisely because the setup was
+ * previously unavailable. Groups preserve the in-game category and setting order
+ * so it reads like the garage setup sheet.
+ */
+export class CarSetup {
+    "active_setup": string;
+    "default_setup": string;
+    "compare_to_setup": string;
+    "track_folder": string;
+    "fixed_setup_race": boolean;
+    "unsaved_changes": boolean;
+    "car": SetupCar;
+    "groups": SetupGroup[];
+
+    /** Creates a new CarSetup instance. */
+    constructor($$source: Partial<CarSetup> = {}) {
+        if (!("active_setup" in $$source)) {
+            this["active_setup"] = "";
+        }
+        if (!("default_setup" in $$source)) {
+            this["default_setup"] = "";
+        }
+        if (!("compare_to_setup" in $$source)) {
+            this["compare_to_setup"] = "";
+        }
+        if (!("track_folder" in $$source)) {
+            this["track_folder"] = "";
+        }
+        if (!("fixed_setup_race" in $$source)) {
+            this["fixed_setup_race"] = false;
+        }
+        if (!("unsaved_changes" in $$source)) {
+            this["unsaved_changes"] = false;
+        }
+        if (!("car" in $$source)) {
+            this["car"] = (new SetupCar());
+        }
+        if (!("groups" in $$source)) {
+            this["groups"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CarSetup instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CarSetup {
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("car" in $$parsedSource) {
+            $$parsedSource["car"] = $$createField6_0($$parsedSource["car"]);
+        }
+        if ("groups" in $$parsedSource) {
+            $$parsedSource["groups"] = $$createField7_0($$parsedSource["groups"]);
+        }
+        return new CarSetup($$parsedSource as Partial<CarSetup>);
+    }
+}
+
+/**
  * ForecastNode is one weather-forecast point: a session phase (e.g. "PRACTICE")
  * and a node along it ("FINISH", "NODE_25"…) with the predicted conditions. It
  * is the flattened form of /rest/sessions/weather's nested map, so the frontend
@@ -40,7 +104,7 @@ export class ForecastNode {
      * Creates a new ForecastNode instance from a string or object.
      */
     static createFrom($$source: any = {}): ForecastNode {
-        const $$createField2_0 = $$createType1;
+        const $$createField2_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("values" in $$parsedSource) {
             $$parsedSource["values"] = $$createField2_0($$parsedSource["values"]);
@@ -239,6 +303,181 @@ export class PitMenuItem {
 }
 
 /**
+ * SetupCar identifies the car the setup belongs to.
+ */
+export class SetupCar {
+    "name": string;
+    "display_name": string;
+    "manufacturer": string;
+    "engine": string;
+
+    /**
+     * the model tree path (e.g. "WEC 2026, GT3, Porsche 911 GT3 R LMGT3")
+     */
+    "class": string;
+
+    /** Creates a new SetupCar instance. */
+    constructor($$source: Partial<SetupCar> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("display_name" in $$source)) {
+            this["display_name"] = "";
+        }
+        if (!("manufacturer" in $$source)) {
+            this["manufacturer"] = "";
+        }
+        if (!("engine" in $$source)) {
+            this["engine"] = "";
+        }
+        if (!("class" in $$source)) {
+            this["class"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SetupCar instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SetupCar {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SetupCar($$parsedSource as Partial<SetupCar>);
+    }
+}
+
+/**
+ * SetupFile is one saved setup from /rest/garage/setup (the list of saveable
+ * setups for the current car). Names ending in "\" are track folders.
+ */
+export class SetupFile {
+    "name": string;
+    "created": string;
+    "modified": string;
+    "numDiffUpgrades": number;
+    "sameVehicleClass": boolean;
+
+    /** Creates a new SetupFile instance. */
+    constructor($$source: Partial<SetupFile> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("created" in $$source)) {
+            this["created"] = "";
+        }
+        if (!("modified" in $$source)) {
+            this["modified"] = "";
+        }
+        if (!("numDiffUpgrades" in $$source)) {
+            this["numDiffUpgrades"] = 0;
+        }
+        if (!("sameVehicleClass" in $$source)) {
+            this["sameVehicleClass"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SetupFile instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SetupFile {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SetupFile($$parsedSource as Partial<SetupFile>);
+    }
+}
+
+/**
+ * SetupGroup is one category of settings (e.g. "SUSPENSION_FRONT").
+ */
+export class SetupGroup {
+    "category": string;
+    "settings": SetupSetting[];
+
+    /** Creates a new SetupGroup instance. */
+    constructor($$source: Partial<SetupGroup> = {}) {
+        if (!("category" in $$source)) {
+            this["category"] = "";
+        }
+        if (!("settings" in $$source)) {
+            this["settings"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SetupGroup instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SetupGroup {
+        const $$createField1_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("settings" in $$parsedSource) {
+            $$parsedSource["settings"] = $$createField1_0($$parsedSource["settings"]);
+        }
+        return new SetupGroup($$parsedSource as Partial<SetupGroup>);
+    }
+}
+
+/**
+ * SetupSetting is one adjustable setting. StringValue is the in-game display
+ * (e.g. "50.0:50.0", "9 (Understeer)"); Value is the raw step index. LastSaved
+ * differs from StringValue when the current value has unsaved changes.
+ */
+export class SetupSetting {
+    "key": string;
+    "caption": string;
+    "string_value": string;
+    "value": number;
+    "min_value": number;
+    "max_value": number;
+    "last_saved": string;
+
+    /**
+     * current value differs from the last saved one
+     */
+    "changed": boolean;
+
+    /** Creates a new SetupSetting instance. */
+    constructor($$source: Partial<SetupSetting> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("caption" in $$source)) {
+            this["caption"] = "";
+        }
+        if (!("string_value" in $$source)) {
+            this["string_value"] = "";
+        }
+        if (!("value" in $$source)) {
+            this["value"] = 0;
+        }
+        if (!("min_value" in $$source)) {
+            this["min_value"] = 0;
+        }
+        if (!("max_value" in $$source)) {
+            this["max_value"] = 0;
+        }
+        if (!("last_saved" in $$source)) {
+            this["last_saved"] = "";
+        }
+        if (!("changed" in $$source)) {
+            this["changed"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SetupSetting instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SetupSetting {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SetupSetting($$parsedSource as Partial<SetupSetting>);
+    }
+}
+
+/**
  * Snapshot is one aggregated read of the LMU REST API. Available is false when
  * the game is not in an active session (Reason explains why), in which case the
  * data sections are nil. Each section is a pointer/slice/map so "absent" is
@@ -272,13 +511,13 @@ export class Snapshot {
      * Creates a new Snapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): Snapshot {
-        const $$createField3_0 = $$createType3;
-        const $$createField4_0 = $$createType5;
-        const $$createField5_0 = $$createType8;
-        const $$createField6_0 = $$createType10;
-        const $$createField7_0 = $$createType12;
-        const $$createField8_0 = $$createType14;
-        const $$createField9_0 = $$createType16;
+        const $$createField3_0 = $$createType8;
+        const $$createField4_0 = $$createType10;
+        const $$createField5_0 = $$createType13;
+        const $$createField6_0 = $$createType15;
+        const $$createField7_0 = $$createType17;
+        const $$createField8_0 = $$createType19;
+        const $$createField9_0 = $$createType21;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("game_state" in $$parsedSource) {
             $$parsedSource["game_state"] = $$createField3_0($$parsedSource["game_state"]);
@@ -504,20 +743,25 @@ export class VehicleCondition {
 }
 
 // Private type creation functions
-const $$createType0 = ForecastValue.createFrom;
-const $$createType1 = $Create.Map($Create.Any, $$createType0);
-const $$createType2 = GameState.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = PitEstimate.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = UsageEntry.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = $Create.Map($Create.Any, $$createType7);
-const $$createType9 = VehicleCondition.createFrom;
+const $$createType0 = SetupCar.createFrom;
+const $$createType1 = SetupGroup.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = ForecastValue.createFrom;
+const $$createType4 = $Create.Map($Create.Any, $$createType3);
+const $$createType5 = SetupSetting.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = GameState.createFrom;
+const $$createType8 = $Create.Nullable($$createType7);
+const $$createType9 = PitEstimate.createFrom;
 const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = ForecastNode.createFrom;
+const $$createType11 = UsageEntry.createFrom;
 const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = Standing.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = PitMenuItem.createFrom;
-const $$createType16 = $Create.Array($$createType15);
+const $$createType13 = $Create.Map($Create.Any, $$createType12);
+const $$createType14 = VehicleCondition.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = ForecastNode.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = Standing.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = PitMenuItem.createFrom;
+const $$createType21 = $Create.Array($$createType20);
