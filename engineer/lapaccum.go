@@ -55,10 +55,11 @@ type lapAccumulator struct {
 	last    []MiniSectorState // last completed lap
 	hasLast bool
 
-	// curLapFull marks that the in-progress lap began at the start/finish line (a
-	// lap rollover), so it covers the whole track. The very first lap the engine
-	// sees usually starts mid-track and is partial — we exclude those from the
-	// best-lap reference.
+	// curLapFull marks that the in-progress lap began by genuinely crossing the
+	// start/finish line (the previous lap reached the final mini-sector before the
+	// rollover), so it covers the whole track. The very first lap the engine sees
+	// usually starts mid-track, and an out-lap from the garage begins wherever the
+	// pit box is — both are partial and excluded from the best-lap reference.
 	curLapFull bool
 
 	// best* hold the fastest FULL lap seen (by summed mini-sector time), the
@@ -88,13 +89,21 @@ func (a *lapAccumulator) update(s sample) {
 		a.beginSector(idx, s)
 	case s.lap != a.lap:
 		a.closeSector(s)
+		// A genuine lap completion crosses the start/finish line, so the finishing lap
+		// must have reached the final mini-sector. Returning to the garage (or any
+		// teleport) also bumps the lap number, but leaves the car mid-track — that is
+		// NOT a completed lap and must not become the best/reference.
+		endedAtLine := a.sector == numMiniSectors-1
 		var donePath []Vec2
 		if a.trackPath {
 			donePath = downsample(a.curPath, pathSamples)
 		}
-		// Promote this completed lap to the best reference if it was a full lap and
-		// quicker than the stored best (by summed mini-sector time).
-		if lapTime := totalLapTime(a.current); a.curLapFull && lapTime > 0 && (a.bestTime == 0 || lapTime < a.bestTime) {
+		// Promote this completed lap to the best reference only if it was a full lap —
+		// it both STARTED at the line (curLapFull) and ENDED by crossing it
+		// (endedAtLine) — and is quicker than the stored best (by summed mini-sector
+		// time). The end check is what rejects a lap abandoned in the garage, whose
+		// partial sector sum would otherwise look like an impossibly fast lap.
+		if lapTime := totalLapTime(a.current); a.curLapFull && endedAtLine && lapTime > 0 && (a.bestTime == 0 || lapTime < a.bestTime) {
 			a.bestTime = lapTime
 			a.best = a.current
 			a.bestPath = donePath
@@ -104,7 +113,9 @@ func (a *lapAccumulator) update(s sample) {
 		a.lastPath = donePath
 		a.current = make([]MiniSectorState, numMiniSectors)
 		a.lap = s.lap
-		a.curLapFull = true // the new lap starts at the line
+		// The new lap is "full" only if this rollover was a real line crossing; an
+		// out-lap that begins with a garage teleport starts mid-track and is partial.
+		a.curLapFull = endedAtLine
 		if a.trackPath {
 			a.curPath = a.curPath[:0]
 		}

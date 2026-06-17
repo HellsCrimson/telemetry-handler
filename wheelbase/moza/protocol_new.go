@@ -38,10 +38,10 @@ func ParseProtocol(s string) Protocol {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "new":
 		return ProtocolNew
-	case "auto":
-		return ProtocolAuto
-	default:
+	case "old":
 		return ProtocolOld
+	default:
+		return ProtocolAuto
 	}
 }
 

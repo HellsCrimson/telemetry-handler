@@ -372,6 +372,38 @@ func TestLapAccumulatorBestLap(t *testing.T) {
 	}
 }
 
+func TestLapAccumulatorGarageAbortNotBest(t *testing.T) {
+	var a lapAccumulator
+	et := 0.0
+	// Drive three genuine full laps (all mini-sectors), 2s/sector = 40s each. A lap
+	// is finalized when the NEXT lap's first sample rolls the lap number over, so by
+	// the time lap 3 begins, lap 2 has become the best (lap 1 is the engine's first
+	// lap and is excluded from `best`, like the real session start).
+	for lap := 1; lap <= 3; lap++ {
+		for s := range numMiniSectors {
+			a.update(sample{lap: int32(lap), frac: float64(s) / numMiniSectors, et: et, speed: 50})
+			et += 2.0
+		}
+	}
+	if a.bestLap() == nil {
+		t.Fatal("expected a best lap after three full laps")
+	}
+	best := a.bestLapTime() // ~40s
+
+	// Now abandon lap 3: drive a few mini-sectors very fast, then "return to the
+	// garage" — the lap number bumps (to 99) while still mid-track. Its tiny summed
+	// time would beat the real best if it were counted, so this is the regression.
+	for s := range 4 {
+		a.update(sample{lap: 4, frac: float64(s) / numMiniSectors, et: et, speed: 50})
+		et += 0.1
+	}
+	a.update(sample{lap: 99, frac: 0.2, et: et, speed: 50}) // garage teleport, lap bumped mid-track
+
+	if got := a.bestLapTime(); got != best {
+		t.Errorf("garage-aborted lap replaced best: bestLapTime = %v, want %v (unchanged)", got, best)
+	}
+}
+
 func TestLapAccumulatorNoLapYet(t *testing.T) {
 	var a lapAccumulator
 	a.update(sample{lap: 1, frac: 0.1, fuel: 50, speed: 40})
