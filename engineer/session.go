@@ -45,6 +45,65 @@ type SessionState struct {
 	Player         PlayerDetail `json:"player"`  // car-management detail for the player car only
 	Events         []RaceEvent  `json:"events"`  // most-recent-last race timeline (bounded)
 	Corners        []string     `json:"corners"` // per-mini-sector corner label ("T1"/""=straight); derived from the reference lap
+
+	// Strategy carries the extras polled from LMU's REST API (pit-stop time
+	// estimate, fuel-tank capacity, weather forecast, per-driver projections) that
+	// the shared-memory frame does not contain. Present is false until the API has
+	// been polled in an active session. It is merged onto every snapshot (re-applied
+	// each frame) so the frontend gets it alongside the per-frame state.
+	Strategy StrategyState `json:"strategy"`
+}
+
+// StrategyState is the game-agnostic projection of the LMU REST extras. The app
+// maps the LMU-specific rest.Snapshot onto this so the engine stays decoupled
+// from the REST layer.
+type StrategyState struct {
+	Present      bool            `json:"present"`
+	GamePhase    string          `json:"game_phase"`    // race-control phase ("GPHASE_GREEN", …)
+	PitState     string          `json:"pit_state"`     // player pit state ("EXITING", "NONE", …)
+	FuelCapacity float64         `json:"fuel_capacity"` // tank size (liters) — authoritative from REST
+	PitEstimate  PitEstimate     `json:"pit_estimate"`  // projected next pit-stop duration
+	Forecast     []ForecastPoint `json:"forecast"`      // weather forecast across session nodes
+	Drivers      []DriverUsage   `json:"drivers"`       // per-driver fuel/energy projections (all cars)
+	PitMenu      []PitMenuEntry  `json:"pit_menu"`      // current in-game pit-menu selections
+}
+
+// PitEstimate is the projected pit-stop duration broken down by activity (s).
+type PitEstimate struct {
+	Total      float64 `json:"total"`
+	Fuel       float64 `json:"fuel"`
+	Tires      float64 `json:"tires"`
+	VE         float64 `json:"ve"` // virtual-energy recharge time
+	Damage     float64 `json:"damage"`
+	DriverSwap float64 `json:"driver_swap"`
+	Penalties  float64 `json:"penalties"`
+}
+
+// ForecastPoint is the predicted weather at one session node.
+type ForecastPoint struct {
+	Session     string  `json:"session"`     // session phase ("PRACTICE", "RACE", …)
+	Node        string  `json:"node"`        // node along it ("FINISH", "NODE_25", …)
+	RainChance  float64 `json:"rain_chance"` // percent
+	Temperature float64 `json:"temperature"` // ambient, degrees
+	Sky         string  `json:"sky"`         // textual sky condition ("Light Clouds", …)
+	WindSpeed   float64 `json:"wind_speed"`  // game wind-speed units
+}
+
+// DriverUsage is one driver's projected resource usage for the current stint.
+// Fuel is only populated for the player's own car. VE is virtual energy (0..1).
+type DriverUsage struct {
+	Driver string  `json:"driver"`
+	Stint  int     `json:"stint"`
+	Lap    int     `json:"lap"`
+	VE     float64 `json:"ve"`
+	Fuel   float64 `json:"fuel"`
+}
+
+// PitMenuEntry is one in-game pit-menu row with its currently-selected option
+// text resolved (e.g. {"VIRTUAL ENERGY:", "31% 6 laps"}).
+type PitMenuEntry struct {
+	Name    string `json:"name"`
+	Current string `json:"current"`
 }
 
 // PlayerDetail is the instantaneous "Car Management" view of the player's car:

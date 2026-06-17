@@ -12,6 +12,7 @@ import (
 	"telemetry-handler/config"
 	"telemetry-handler/engineer"
 	"telemetry-handler/game/forza"
+	"telemetry-handler/game/lmu/rest"
 	"telemetry-handler/game/lmu/wire"
 	"telemetry-handler/recording"
 	"telemetry-handler/store"
@@ -90,6 +91,7 @@ type Runtime struct {
 	source       string
 	meta         TelemetryMeta
 	frame        *wire.Frame        // full LMU frame (all cars + globals); nil for Forza
+	restData     *rest.Snapshot     // latest LMU REST poll (strategy/forecast/pit extras); nil until polled
 	engineer     *engineer.Engineer // live strategy engine (multi-car SessionState)
 	store        *store.Store       // local persistence (reference laps, corners, sessions, recordings); nil if unavailable
 	moza         *moza.Driver
@@ -175,6 +177,28 @@ func (r *Runtime) LatestFrame() *wire.Frame {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.frame
+}
+
+// SetRESTData stores the latest LMU REST snapshot (strategy/forecast/pit extras)
+// and folds the live-session bits into the strategy engine so they surface on the
+// SessionState the frontend already polls. A nil or unavailable snapshot clears
+// the engine's REST overlay. Called by the REST poller off the hot frame path.
+func (r *Runtime) SetRESTData(snap *rest.Snapshot) {
+	r.mu.Lock()
+	r.restData = snap
+	r.mu.Unlock()
+	// Map the LMU-specific REST shape to the game-agnostic strategy overlay here
+	// (the app is the bridge); the engine stays free of the rest package. A nil or
+	// unavailable snapshot maps to an empty (absent) overlay, clearing it.
+	r.engineer.ApplyStrategy(restToStrategy(snap))
+}
+
+// RESTData returns the latest LMU REST snapshot, or nil if the API has not been
+// polled (or LMU REST polling is disabled).
+func (r *Runtime) RESTData() *rest.Snapshot {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.restData
 }
 
 // ObserveFrame feeds one decoded LMU frame to the strategy engine. The receiver

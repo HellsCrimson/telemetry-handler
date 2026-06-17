@@ -15,6 +15,7 @@ export class Config {
     "recording": Recording;
     "terminal_print": Terminal;
     "overlay": Overlay;
+    "lmu": LMU;
 
     /** Creates a new Config instance. */
     constructor($$source: Partial<Config> = {}) {
@@ -39,6 +40,9 @@ export class Config {
         if (!("overlay" in $$source)) {
             this["overlay"] = (new Overlay());
         }
+        if (!("lmu" in $$source)) {
+            this["lmu"] = (new LMU());
+        }
 
         Object.assign(this, $$source);
     }
@@ -51,6 +55,7 @@ export class Config {
         const $$createField4_0 = $$createType1;
         const $$createField5_0 = $$createType2;
         const $$createField6_0 = $$createType3;
+        const $$createField7_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("moza" in $$parsedSource) {
             $$parsedSource["moza"] = $$createField3_0($$parsedSource["moza"]);
@@ -63,6 +68,9 @@ export class Config {
         }
         if ("overlay" in $$parsedSource) {
             $$parsedSource["overlay"] = $$createField6_0($$parsedSource["overlay"]);
+        }
+        if ("lmu" in $$parsedSource) {
+            $$parsedSource["lmu"] = $$createField7_0($$parsedSource["lmu"]);
         }
         return new Config($$parsedSource as Partial<Config>);
     }
@@ -94,6 +102,42 @@ export class CurvePoint {
     static createFrom($$source: any = {}): CurvePoint {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new CurvePoint($$parsedSource as Partial<CurvePoint>);
+    }
+}
+
+/**
+ * LMU configures polling of Le Mans Ultimate's local REST API (port 6397), which
+ * exposes strategy/weather-forecast/pit data the rF2 shared memory does not. The
+ * API is reachable from the host directly, so no sidecar is involved. When
+ * Enabled, the app polls it while LMU telemetry is live and merges the result
+ * into the strategy session model.
+ */
+export class LMU {
+    "enabled": boolean;
+    "base_url": string;
+    "poll_hz": number;
+
+    /** Creates a new LMU instance. */
+    constructor($$source: Partial<LMU> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("base_url" in $$source)) {
+            this["base_url"] = "";
+        }
+        if (!("poll_hz" in $$source)) {
+            this["poll_hz"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LMU instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LMU {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new LMU($$parsedSource as Partial<LMU>);
     }
 }
 
@@ -165,7 +209,7 @@ export class Moza {
      * Creates a new Moza instance from a string or object.
      */
     static createFrom($$source: any = {}): Moza {
-        const $$createField9_0 = $$createType5;
+        const $$createField9_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("rpm_curve_points" in $$parsedSource) {
             $$parsedSource["rpm_curve_points"] = $$createField9_0($$parsedSource["rpm_curve_points"]);
@@ -284,5 +328,6 @@ const $$createType0 = Moza.createFrom;
 const $$createType1 = Recording.createFrom;
 const $$createType2 = Terminal.createFrom;
 const $$createType3 = Overlay.createFrom;
-const $$createType4 = CurvePoint.createFrom;
-const $$createType5 = $Create.Array($$createType4);
+const $$createType4 = LMU.createFrom;
+const $$createType5 = CurvePoint.createFrom;
+const $$createType6 = $Create.Array($$createType5);

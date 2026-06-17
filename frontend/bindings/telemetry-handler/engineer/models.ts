@@ -330,6 +330,47 @@ export class CarState {
 }
 
 /**
+ * DriverUsage is one driver's projected resource usage for the current stint.
+ * Fuel is only populated for the player's own car. VE is virtual energy (0..1).
+ */
+export class DriverUsage {
+    "driver": string;
+    "stint": number;
+    "lap": number;
+    "ve": number;
+    "fuel": number;
+
+    /** Creates a new DriverUsage instance. */
+    constructor($$source: Partial<DriverUsage> = {}) {
+        if (!("driver" in $$source)) {
+            this["driver"] = "";
+        }
+        if (!("stint" in $$source)) {
+            this["stint"] = 0;
+        }
+        if (!("lap" in $$source)) {
+            this["lap"] = 0;
+        }
+        if (!("ve" in $$source)) {
+            this["ve"] = 0;
+        }
+        if (!("fuel" in $$source)) {
+            this["fuel"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DriverUsage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DriverUsage {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DriverUsage($$parsedSource as Partial<DriverUsage>);
+    }
+}
+
+/**
  * FlagState is the global race-control state powering the popup banner.
  */
 export class FlagState {
@@ -378,6 +419,73 @@ export class FlagState {
     static createFrom($$source: any = {}): FlagState {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new FlagState($$parsedSource as Partial<FlagState>);
+    }
+}
+
+/**
+ * ForecastPoint is the predicted weather at one session node.
+ */
+export class ForecastPoint {
+    /**
+     * session phase ("PRACTICE", "RACE", …)
+     */
+    "session": string;
+
+    /**
+     * node along it ("FINISH", "NODE_25", …)
+     */
+    "node": string;
+
+    /**
+     * percent
+     */
+    "rain_chance": number;
+
+    /**
+     * ambient, degrees
+     */
+    "temperature": number;
+
+    /**
+     * textual sky condition ("Light Clouds", …)
+     */
+    "sky": string;
+
+    /**
+     * game wind-speed units
+     */
+    "wind_speed": number;
+
+    /** Creates a new ForecastPoint instance. */
+    constructor($$source: Partial<ForecastPoint> = {}) {
+        if (!("session" in $$source)) {
+            this["session"] = "";
+        }
+        if (!("node" in $$source)) {
+            this["node"] = "";
+        }
+        if (!("rain_chance" in $$source)) {
+            this["rain_chance"] = 0;
+        }
+        if (!("temperature" in $$source)) {
+            this["temperature"] = 0;
+        }
+        if (!("sky" in $$source)) {
+            this["sky"] = "";
+        }
+        if (!("wind_speed" in $$source)) {
+            this["wind_speed"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ForecastPoint instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ForecastPoint {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ForecastPoint($$parsedSource as Partial<ForecastPoint>);
     }
 }
 
@@ -464,6 +572,87 @@ export class MiniSectorState {
     static createFrom($$source: any = {}): MiniSectorState {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new MiniSectorState($$parsedSource as Partial<MiniSectorState>);
+    }
+}
+
+/**
+ * PitEstimate is the projected pit-stop duration broken down by activity (s).
+ */
+export class PitEstimate {
+    "total": number;
+    "fuel": number;
+    "tires": number;
+
+    /**
+     * virtual-energy recharge time
+     */
+    "ve": number;
+    "damage": number;
+    "driver_swap": number;
+    "penalties": number;
+
+    /** Creates a new PitEstimate instance. */
+    constructor($$source: Partial<PitEstimate> = {}) {
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("fuel" in $$source)) {
+            this["fuel"] = 0;
+        }
+        if (!("tires" in $$source)) {
+            this["tires"] = 0;
+        }
+        if (!("ve" in $$source)) {
+            this["ve"] = 0;
+        }
+        if (!("damage" in $$source)) {
+            this["damage"] = 0;
+        }
+        if (!("driver_swap" in $$source)) {
+            this["driver_swap"] = 0;
+        }
+        if (!("penalties" in $$source)) {
+            this["penalties"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PitEstimate instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PitEstimate {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PitEstimate($$parsedSource as Partial<PitEstimate>);
+    }
+}
+
+/**
+ * PitMenuEntry is one in-game pit-menu row with its currently-selected option
+ * text resolved (e.g. {"VIRTUAL ENERGY:", "31% 6 laps"}).
+ */
+export class PitMenuEntry {
+    "name": string;
+    "current": string;
+
+    /** Creates a new PitMenuEntry instance. */
+    constructor($$source: Partial<PitMenuEntry> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("current" in $$source)) {
+            this["current"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PitMenuEntry instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PitMenuEntry {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PitMenuEntry($$parsedSource as Partial<PitMenuEntry>);
     }
 }
 
@@ -761,6 +950,15 @@ export class SessionState {
      */
     "corners": string[];
 
+    /**
+     * Strategy carries the extras polled from LMU's REST API (pit-stop time
+     * estimate, fuel-tank capacity, weather forecast, per-driver projections) that
+     * the shared-memory frame does not contain. Present is false until the API has
+     * been polled in an active session. It is merged onto every snapshot (re-applied
+     * each frame) so the frontend gets it alongside the per-frame state.
+     */
+    "strategy": StrategyState;
+
     /** Creates a new SessionState instance. */
     constructor($$source: Partial<SessionState> = {}) {
         if (!("available" in $$source)) {
@@ -808,6 +1006,9 @@ export class SessionState {
         if (!("corners" in $$source)) {
             this["corners"] = [];
         }
+        if (!("strategy" in $$source)) {
+            this["strategy"] = (new StrategyState());
+        }
 
         Object.assign(this, $$source);
     }
@@ -822,6 +1023,7 @@ export class SessionState {
         const $$createField12_0 = $$createType11;
         const $$createField13_0 = $$createType13;
         const $$createField14_0 = $$createType14;
+        const $$createField15_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("flags" in $$parsedSource) {
             $$parsedSource["flags"] = $$createField9_0($$parsedSource["flags"]);
@@ -841,7 +1043,108 @@ export class SessionState {
         if ("corners" in $$parsedSource) {
             $$parsedSource["corners"] = $$createField14_0($$parsedSource["corners"]);
         }
+        if ("strategy" in $$parsedSource) {
+            $$parsedSource["strategy"] = $$createField15_0($$parsedSource["strategy"]);
+        }
         return new SessionState($$parsedSource as Partial<SessionState>);
+    }
+}
+
+/**
+ * StrategyState is the game-agnostic projection of the LMU REST extras. The app
+ * maps the LMU-specific rest.Snapshot onto this so the engine stays decoupled
+ * from the REST layer.
+ */
+export class StrategyState {
+    "present": boolean;
+
+    /**
+     * race-control phase ("GPHASE_GREEN", …)
+     */
+    "game_phase": string;
+
+    /**
+     * player pit state ("EXITING", "NONE", …)
+     */
+    "pit_state": string;
+
+    /**
+     * tank size (liters) — authoritative from REST
+     */
+    "fuel_capacity": number;
+
+    /**
+     * projected next pit-stop duration
+     */
+    "pit_estimate": PitEstimate;
+
+    /**
+     * weather forecast across session nodes
+     */
+    "forecast": ForecastPoint[];
+
+    /**
+     * per-driver fuel/energy projections (all cars)
+     */
+    "drivers": DriverUsage[];
+
+    /**
+     * current in-game pit-menu selections
+     */
+    "pit_menu": PitMenuEntry[];
+
+    /** Creates a new StrategyState instance. */
+    constructor($$source: Partial<StrategyState> = {}) {
+        if (!("present" in $$source)) {
+            this["present"] = false;
+        }
+        if (!("game_phase" in $$source)) {
+            this["game_phase"] = "";
+        }
+        if (!("pit_state" in $$source)) {
+            this["pit_state"] = "";
+        }
+        if (!("fuel_capacity" in $$source)) {
+            this["fuel_capacity"] = 0;
+        }
+        if (!("pit_estimate" in $$source)) {
+            this["pit_estimate"] = (new PitEstimate());
+        }
+        if (!("forecast" in $$source)) {
+            this["forecast"] = [];
+        }
+        if (!("drivers" in $$source)) {
+            this["drivers"] = [];
+        }
+        if (!("pit_menu" in $$source)) {
+            this["pit_menu"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new StrategyState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): StrategyState {
+        const $$createField4_0 = $$createType16;
+        const $$createField5_0 = $$createType18;
+        const $$createField6_0 = $$createType20;
+        const $$createField7_0 = $$createType22;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("pit_estimate" in $$parsedSource) {
+            $$parsedSource["pit_estimate"] = $$createField4_0($$parsedSource["pit_estimate"]);
+        }
+        if ("forecast" in $$parsedSource) {
+            $$parsedSource["forecast"] = $$createField5_0($$parsedSource["forecast"]);
+        }
+        if ("drivers" in $$parsedSource) {
+            $$parsedSource["drivers"] = $$createField6_0($$parsedSource["drivers"]);
+        }
+        if ("pit_menu" in $$parsedSource) {
+            $$parsedSource["pit_menu"] = $$createField7_0($$parsedSource["pit_menu"]);
+        }
+        return new StrategyState($$parsedSource as Partial<StrategyState>);
     }
 }
 
@@ -1017,3 +1320,11 @@ const $$createType11 = PlayerDetail.createFrom;
 const $$createType12 = RaceEvent.createFrom;
 const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = $Create.Array($Create.Any);
+const $$createType15 = StrategyState.createFrom;
+const $$createType16 = PitEstimate.createFrom;
+const $$createType17 = ForecastPoint.createFrom;
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = DriverUsage.createFrom;
+const $$createType20 = $Create.Array($$createType19);
+const $$createType21 = PitMenuEntry.createFrom;
+const $$createType22 = $Create.Array($$createType21);

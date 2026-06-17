@@ -47,6 +47,11 @@ type Engineer struct {
 	curTrack string
 	curCar   string
 	curClass string
+
+	// strategy is the latest REST-derived overlay (pit estimate, fuel capacity,
+	// weather forecast, per-driver projections). It is polled far slower than
+	// frames arrive, so it is kept separately and merged onto every snapshot.
+	strategy StrategyState
 }
 
 // reference is a stored/best lap held in memory for comparison + persistence.
@@ -213,7 +218,38 @@ func (e *Engineer) Observe(f *wire.Frame) {
 	e.events = e.det.detect(f, state.Flags, e.events)
 	state.Events = e.events
 
+	// Re-attach the slower-polled REST overlay so it survives this frame's wholesale
+	// state replacement.
+	e.mergeStrategy(&state)
+
 	e.state = state
+}
+
+// ApplyStrategy stores the latest REST-derived strategy overlay and merges it onto
+// the current snapshot, so a fresh poll surfaces immediately (between frames) and
+// not only on the next observed frame. Called by the app's REST poller off the hot
+// frame path. An empty (Present=false) overlay clears any prior one.
+func (e *Engineer) ApplyStrategy(s StrategyState) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.strategy = s
+	e.mergeStrategy(&e.state)
+}
+
+// mergeStrategy folds the stored REST overlay onto a SessionState: it sets the
+// Strategy block and, when REST reports an authoritative fuel-tank capacity,
+// applies it to the player car (the shared-memory frame does not expose it).
+// Caller holds the lock.
+func (e *Engineer) mergeStrategy(state *SessionState) {
+	state.Strategy = e.strategy
+	if !e.strategy.Present || e.strategy.FuelCapacity <= 0 {
+		return
+	}
+	for i := range state.Cars {
+		if state.Cars[i].ID == state.PlayerID || state.Cars[i].IsPlayer {
+			state.Cars[i].FuelCapacity = e.strategy.FuelCapacity
+		}
+	}
 }
 
 // updateReference promotes the player's in-session best lap to the persisted

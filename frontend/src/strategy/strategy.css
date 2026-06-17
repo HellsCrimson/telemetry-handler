@@ -428,3 +428,95 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Strategy Calls — REST-derived panels (pit-stop time, pit menu, forecast) */
+.strat-pitstop-breakdown {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.strat-pitstop-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.strat-pitstop-breakdown li span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.strat-pitstop-breakdown li strong {
+  font-size: 15px;
+}
+.strat-pitstop-breakdown small {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.strat-pitmenu-list {
+  margin: 0;
+}
+.strat-pitmenu-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+.strat-pitmenu-row:first-child {
+  border-top: none;
+}
+.strat-pitmenu-row dt {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.strat-pitmenu-row dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.strat-forecast-session + .strat-forecast-session {
+  margin-top: 12px;
+}
+.strat-forecast-title {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+.strat-forecast-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.strat-forecast-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 6px;
+}
+.strat-forecast-table td {
+  padding: 4px 6px;
+  border-top: 1px solid var(--line);
+}
+.strat-forecast-table td:last-child,
+.strat-forecast-table td:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.strat-forecast-wet {
+  color: var(--blue);
+  font-weight: 600;
+}

@@ -16,6 +16,9 @@ import RacePopups from "./components/RacePopups";
 import TrackCircle from "./components/TrackCircle";
 import WeatherPanel from "./components/WeatherPanel";
 import PitParameters from "./components/PitParameters";
+import PitStopEstimate from "./components/PitStopEstimate";
+import PitMenuPanel from "./components/PitMenuPanel";
+import WeatherForecast from "./components/WeatherForecast";
 import UndercutOvercut from "./components/UndercutOvercut";
 import EventTimeline from "./components/EventTimeline";
 import LiveData from "./tabs/LiveData";
@@ -98,8 +101,11 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
             <TrackCircle state={state} pitLossSeconds={settings.pitLossSeconds} />
             <div className="strat-livedata">
               <PitParameters state={state} safetyLaps={settings.safetyLaps} />
+              <PitStopEstimate strategy={state.strategy} />
               <UndercutOvercut state={state} pitLossSeconds={settings.pitLossSeconds} />
+              <PitMenuPanel menu={state.strategy.pit_menu} />
               <WeatherPanel weather={state.weather} />
+              <WeatherForecast forecast={state.strategy.forecast} />
             </div>
           </>
         )}

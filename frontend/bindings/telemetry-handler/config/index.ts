@@ -4,6 +4,7 @@
 export {
     Config,
     CurvePoint,
+    LMU,
     Moza,
     Overlay,
     Recording,

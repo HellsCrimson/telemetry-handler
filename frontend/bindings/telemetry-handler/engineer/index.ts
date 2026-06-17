@@ -4,11 +4,16 @@
 export {
     BalanceState,
     CarState,
+    DriverUsage,
     FlagState,
+    ForecastPoint,
     MiniSectorState,
+    PitEstimate,
+    PitMenuEntry,
     PlayerDetail,
     RaceEvent,
     SessionState,
+    StrategyState,
     TireState,
     Vec2,
     WeatherState

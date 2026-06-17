@@ -24,6 +24,9 @@ import * as config$0 from "../config/models.js";
 import * as engineer$0 from "../engineer/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as rest$0 from "../game/lmu/rest/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as wire$0 from "../game/lmu/wire/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -137,9 +140,23 @@ export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
     });
 }
 
+/**
+ * GetStrategyData returns the latest raw poll of LMU's REST API: pit-stop time
+ * estimate, per-driver fuel/energy projections, vehicle condition, weather
+ * forecast, full standings and the in-game pit menu. It is nil until the API has
+ * been polled in an active LMU session (the higher-value bits are also merged
+ * into GetEngineerState().Strategy; this exposes the full detail). The frontend
+ * polls it for the Strategy Planner's richer views.
+ */
+export function GetStrategyData(): $CancellablePromise<rest$0.Snapshot | null> {
+    return $Call.ByID(2558008555).then(($result: any) => {
+        return $$createType13($result);
+    });
+}
+
 export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
     return $Call.ByID(3996014961).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType14($result);
     });
 }
 
@@ -149,7 +166,7 @@ export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
  */
 export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRow[]> {
     return $Call.ByID(189090443).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType16($result);
     });
 }
 
@@ -159,13 +176,13 @@ export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRo
  */
 export function ListMonitors(): $CancellablePromise<string[]> {
     return $Call.ByID(4014067021).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType17($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType19($result);
     });
 }
 
@@ -175,7 +192,7 @@ export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
  */
 export function ListSessions(): $CancellablePromise<store$0.SessionRow[]> {
     return $Call.ByID(660293959).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType21($result);
     });
 }
 
@@ -185,7 +202,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType23($result);
     });
 }
 
@@ -245,13 +262,15 @@ const $$createType8 = $models.MonitorInfo.createFrom;
 const $$createType9 = $models.MozaStatus.createFrom;
 const $$createType10 = $models.OverlayStatus.createFrom;
 const $$createType11 = recording$0.Status.createFrom;
-const $$createType12 = $models.TelemetrySnapshot.createFrom;
-const $$createType13 = store$0.RecordingRow.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = $Create.Array($Create.Any);
-const $$createType16 = recording$0.Info.createFrom;
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = store$0.SessionRow.createFrom;
+const $$createType12 = rest$0.Snapshot.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = $models.TelemetrySnapshot.createFrom;
+const $$createType15 = store$0.RecordingRow.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = $Create.Array($Create.Any);
+const $$createType18 = recording$0.Info.createFrom;
 const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = $models.ReplaySample.createFrom;
+const $$createType20 = store$0.SessionRow.createFrom;
 const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = $models.ReplaySample.createFrom;
+const $$createType23 = $Create.Array($$createType22);

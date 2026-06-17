@@ -16,6 +16,7 @@ import (
 	"telemetry-handler/engineer"
 	"telemetry-handler/game/forza"
 	"telemetry-handler/game/lmu"
+	"telemetry-handler/game/lmu/rest"
 	"telemetry-handler/game/lmu/wire"
 	"telemetry-handler/output"
 	"telemetry-handler/overlay"
@@ -45,6 +46,14 @@ const (
 	// reference lap on a context change, persists a newly-beaten PB, and updates
 	// the session-history row. Kept off the hot frame path on purpose.
 	referenceReconcileEvery = 2 * time.Second
+
+	// lmuRESTPresentWithin gates REST polling: the LMU REST API is only polled
+	// while LMU telemetry has arrived this recently (i.e. the game is running and
+	// it is LMU, not Forza). The same data also only serves in an active session.
+	lmuRESTPresentWithin = 5 * time.Second
+	// lmuRESTTimeout bounds each individual REST request so a hung endpoint cannot
+	// stall the poller.
+	lmuRESTTimeout = 2 * time.Second
 )
 
 // Service is the Wails-bound surface of the application. Its exported methods
@@ -115,6 +124,9 @@ func (s *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	go s.superviseMoza(ctx)
 	if s.runtime.HasStore() {
 		go s.superviseReference(ctx)
+	}
+	if cfg.LMU.Enabled {
+		go s.superviseREST(ctx, cfg.LMU)
 	}
 
 	go s.runReceiver(ctx, cfg)
@@ -190,6 +202,48 @@ func (s *Service) superviseOverlay(ctx context.Context) {
 			s.reconcileOverlay(ctx)
 		}
 	}
+}
+
+// superviseREST polls LMU's local REST API and folds the result (pit estimate,
+// fuel capacity, weather forecast, per-driver projections) into the strategy
+// engine. It only polls while LMU telemetry is live: when LMU is not the active
+// source (Forza, or nothing running) it skips the request and clears any stale
+// data, so the poller never hammers a closed port or mixes games. The API itself
+// also only serves data in an active session — Fetch returns an unavailable
+// snapshot otherwise, which clears the overlay.
+func (s *Service) superviseREST(ctx context.Context, cfg config.LMU) {
+	client := rest.NewClient(cfg.BaseURL, lmuRESTTimeout)
+	every := time.Second
+	if cfg.PollHz > 0 {
+		every = time.Duration(float64(time.Second) / cfg.PollHz)
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if !s.lmuPresent() {
+				if s.runtime.RESTData() != nil {
+					s.runtime.SetRESTData(nil)
+				}
+				continue
+			}
+			snap := client.Fetch(ctx, time.Now())
+			s.runtime.SetRESTData(&snap)
+		}
+	}
+}
+
+// lmuPresent reports whether LMU telemetry has arrived recently, i.e. the game is
+// running and the active source is LMU (not Forza). Used to gate REST polling.
+func (s *Service) lmuPresent() bool {
+	snap := s.runtime.LatestTelemetry()
+	if !snap.Available || snap.Source != "lmu" || snap.ReceivedAt.IsZero() {
+		return false
+	}
+	return time.Since(snap.ReceivedAt) <= lmuRESTPresentWithin
 }
 
 // superviseMoza periodically retries connecting the MOZA wheel while it is
@@ -399,6 +453,16 @@ func (s *Service) GetLatestFrame() *wire.Frame {
 // frontend polls.
 func (s *Service) GetEngineerState() engineer.SessionState {
 	return s.runtime.EngineerState()
+}
+
+// GetStrategyData returns the latest raw poll of LMU's REST API: pit-stop time
+// estimate, per-driver fuel/energy projections, vehicle condition, weather
+// forecast, full standings and the in-game pit menu. It is nil until the API has
+// been polled in an active LMU session (the higher-value bits are also merged
+// into GetEngineerState().Strategy; this exposes the full detail). The frontend
+// polls it for the Strategy Planner's richer views.
+func (s *Service) GetStrategyData() *rest.Snapshot {
+	return s.runtime.RESTData()
 }
 
 // SetComparisonCar tells the strategy engine which rival to buffer a driven line

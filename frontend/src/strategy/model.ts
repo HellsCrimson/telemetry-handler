@@ -12,6 +12,11 @@ import type {
   MiniSectorState as GoMiniSectorState,
   RaceEvent as GoRaceEvent,
   Vec2 as GoVec2,
+  StrategyState as GoStrategyState,
+  PitEstimate as GoPitEstimate,
+  ForecastPoint as GoForecastPoint,
+  DriverUsage as GoDriverUsage,
+  PitMenuEntry as GoPitMenuEntry,
 } from "../../bindings/telemetry-handler/engineer";
 
 export type SessionState = GoSessionState;
@@ -22,6 +27,13 @@ export type WeatherState = GoWeatherState;
 export type MiniSectorState = GoMiniSectorState;
 export type RaceEvent = GoRaceEvent;
 export type Vec2 = GoVec2;
+// StrategyState and friends carry the extras polled from LMU's REST API, merged
+// onto the session state by the Go engine (so the frontend still polls one method).
+export type StrategyState = GoStrategyState;
+export type PitEstimate = GoPitEstimate;
+export type ForecastPoint = GoForecastPoint;
+export type DriverUsage = GoDriverUsage;
+export type PitMenuEntry = GoPitMenuEntry;
 
 // CLASS_COLORS maps the common LMU/endurance classes to distinct colours so the
 // circle reads at a glance. Unknown classes fall back to a stable hashed colour.

@@ -28,6 +28,11 @@ const (
 	// on. The Proton/Wine window class for Forza is not guaranteed, so this is
 	// configurable via overlay.game_window_match.
 	defaultGameWindowMatch = "forza"
+	// defaultLMUBaseURL / defaultLMUPollHz configure polling of LMU's local REST
+	// API. 1 Hz is plenty for strategy data (pit estimates, fuel/energy
+	// projections, weather forecast) — it changes on the scale of laps, not frames.
+	defaultLMUBaseURL = "http://localhost:6397"
+	defaultLMUPollHz  = 1
 )
 
 type Color [3]uint8
@@ -40,6 +45,18 @@ type Config struct {
 	Recording  Recording `json:"recording"`
 	Terminal   Terminal  `json:"terminal_print"`
 	Overlay    Overlay   `json:"overlay"`
+	LMU        LMU       `json:"lmu"`
+}
+
+// LMU configures polling of Le Mans Ultimate's local REST API (port 6397), which
+// exposes strategy/weather-forecast/pit data the rF2 shared memory does not. The
+// API is reachable from the host directly, so no sidecar is involved. When
+// Enabled, the app polls it while LMU telemetry is live and merges the result
+// into the strategy session model.
+type LMU struct {
+	Enabled bool    `json:"enabled"`
+	BaseURL string  `json:"base_url"`
+	PollHz  float64 `json:"poll_hz"`
 }
 
 type Moza struct {
@@ -172,6 +189,11 @@ func Default() Config {
 			SteeringSize:     intPtr(defaultSteeringSize),
 			SteeringRangeDeg: defaultSteeringRangeDeg,
 		},
+		LMU: LMU{
+			Enabled: true,
+			BaseURL: defaultLMUBaseURL,
+			PollHz:  defaultLMUPollHz,
+		},
 	}
 }
 
@@ -267,6 +289,9 @@ func (c Config) Validate() error {
 	}
 	if c.Recording.Dir == "" {
 		return fmt.Errorf("recording.dir must not be empty")
+	}
+	if c.LMU.Enabled && c.LMU.PollHz <= 0 {
+		return fmt.Errorf("lmu.poll_hz must be greater than 0")
 	}
 	return nil
 }
