@@ -3,10 +3,24 @@ package voice
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"telemetry-handler/game/lmu/rest"
 )
+
+// pressureOpts builds a pressure option list "136".."160 (+24)".
+func pressureOpts() []string {
+	out := make([]string, 0, 25)
+	for v := 136; v <= 160; v++ {
+		if v == 136 {
+			out = append(out, "136")
+		} else {
+			out = append(out, fmt.Sprintf("%d (+%d)", v, v-136))
+		}
+	}
+	return out
+}
 
 // fakeController is a stand-in for *rest.Client: it serves a fixed pit menu and
 // records the writes Resolve/Apply would send to the game.
@@ -34,7 +48,9 @@ func (f *fakeController) SetPitMenuValue(_ context.Context, pmc, setting int) er
 // options ARE the compound choices.
 func sampleMenu() []rest.PitMenuItem {
 	tyreOpts := []string{"No Change", "New Medium ", "New Wet ", "Used Medium  0%"}
+	press := pressureOpts()
 	return []rest.PitMenuItem{
+		{Name: "DAMAGE:", PMCValue: 2, Settings: []string{"N/A"}},
 		{Name: "VIRTUAL ENERGY:", PMCValue: 6, Settings: []string{"0% 0 laps", "25% 5 laps", "50% 10 laps", "75% 15 laps", "100% 21 laps"}},
 		{Name: "FUEL RATIO:", PMCValue: 7, Settings: []string{"0.50", "0.91", "1.00"}},
 		{Name: "TIRES:", PMCValue: 8, Settings: append(append([]string{}, tyreOpts...), "Mixed Tyres")},
@@ -42,6 +58,15 @@ func sampleMenu() []rest.PitMenuItem {
 		{Name: "FR TIRE:", PMCValue: 14, Settings: tyreOpts},
 		{Name: "RL TIRE:", PMCValue: 15, Settings: tyreOpts},
 		{Name: "RR TIRE:", PMCValue: 16, Settings: tyreOpts},
+		{Name: "R WING:", PMCValue: 20, CurrentSetting: 3, Settings: []string{"6.3 deg (-3)", "7.3 deg (-2)", "8.3 deg (-1)", "9.3 deg", "10.3 deg (+1)", "11.3 deg (+2)", "12.3 deg (+3)"}},
+		{Name: "GRILLE:", PMCValue: 22, Settings: []string{"1", "2 (+1)", "3 (+2)", "4 (+3)"}},
+		{Name: "FL PRESS:", PMCValue: 25, Settings: press},
+		{Name: "FR PRESS:", PMCValue: 26, Settings: press},
+		{Name: "RL PRESS:", PMCValue: 27, Settings: press},
+		{Name: "RR PRESS:", PMCValue: 28, Settings: press},
+		{Name: "F BRAKE DUCT:", PMCValue: 33, Settings: []string{"Open", "20%", "40%", "60%", "80%", "Closed"}},
+		{Name: "R BRAKE DUCT:", PMCValue: 34, Settings: []string{"Open", "25%", "50%", "75%", "Closed"}},
+		{Name: "REPLACE BRAKES:", PMCValue: 35, Settings: []string{"No", "Yes"}},
 	}
 }
 
@@ -185,6 +210,103 @@ func TestResolvePitMissing(t *testing.T) {
 	}
 	if plan.Important() {
 		t.Error("a plan with no writes should not be important")
+	}
+}
+
+func TestResolvePressure(t *testing.T) {
+	c := &fakeController{menu: sampleMenu()}
+	// "front pressure 140" -> FL(25)+FR(26) at index 4 ("140 (+4)").
+	p := resolve(t, c, "front pressure 140")
+	if len(p.Writes) != 2 {
+		t.Fatalf("front pressure: expected 2 writes, got %+v", p.Writes)
+	}
+	g := cornerSettings(p)
+	if g[25] != 4 || g[26] != 4 {
+		t.Errorf("front pressure 140: got %+v", g)
+	}
+	// "all pressures 145" -> four corners at index 9.
+	if len(resolve(t, c, "all pressures 145").Writes) != 4 {
+		t.Errorf("all pressures: expected 4 writes")
+	}
+	if cornerSettings(resolve(t, c, "rear pressure 150"))[27] != 14 {
+		t.Errorf("rear pressure 150: RL want index 14")
+	}
+}
+
+func TestResolveBrakeDuct(t *testing.T) {
+	c := &fakeController{menu: sampleMenu()}
+	// "open front ducts" -> F BRAKE DUCT (33) index 0 (Open).
+	if p := resolve(t, c, "open front ducts"); p.Writes[0].PMC != 33 || p.Writes[0].Setting != 0 {
+		t.Errorf("open front duct: got %+v", p.Writes)
+	}
+	// "close rear duct" -> R BRAKE DUCT (34) last index (Closed = 4).
+	if p := resolve(t, c, "close rear duct"); p.Writes[0].PMC != 34 || p.Writes[0].Setting != 4 {
+		t.Errorf("close rear duct: got %+v", p.Writes)
+	}
+	// "front brake duct 40 percent" -> 40% (index 2).
+	if p := resolve(t, c, "front brake duct 40 percent"); p.Writes[0].Setting != 2 {
+		t.Errorf("front duct 40: got %+v", p.Writes)
+	}
+}
+
+func TestResolveReplaceBrakes(t *testing.T) {
+	c := &fakeController{menu: sampleMenu()}
+	if p := resolve(t, c, "replace brakes"); p.Writes[0].PMC != 35 || p.Writes[0].Setting != 1 {
+		t.Errorf("replace brakes: got %+v", p.Writes)
+	}
+	if p := resolve(t, c, "keep brakes"); p.Writes[0].PMC != 35 || p.Writes[0].Setting != 0 {
+		t.Errorf("keep brakes: got %+v", p.Writes)
+	}
+}
+
+func TestResolveWing(t *testing.T) {
+	c := &fakeController{menu: sampleMenu()}
+	// Relative: "more wing" -> current 3 + 1 = index 4.
+	if p := resolve(t, c, "more wing"); p.Writes[0].PMC != 20 || p.Writes[0].Setting != 4 {
+		t.Errorf("more wing: got %+v", p.Writes)
+	}
+	// "less wing" -> 3 - 1 = index 2.
+	if p := resolve(t, c, "less wing"); p.Writes[0].Setting != 2 {
+		t.Errorf("less wing: got %+v", p.Writes)
+	}
+	// "wing plus 2" -> 3 + 2 = index 5.
+	if p := resolve(t, c, "wing plus 2"); p.Writes[0].Setting != 5 {
+		t.Errorf("wing plus 2: got %+v", p.Writes)
+	}
+	// Absolute: "wing to 11" -> closest leading degree 11.3 = index 5.
+	if p := resolve(t, c, "wing to 11"); p.Writes[0].Setting != 5 {
+		t.Errorf("wing to 11: got %+v", p.Writes)
+	}
+}
+
+func TestResolveGrille(t *testing.T) {
+	c := &fakeController{menu: sampleMenu()}
+	if p := resolve(t, c, "grille 3"); p.Writes[0].PMC != 22 || p.Writes[0].Setting != 2 {
+		t.Errorf("grille 3: got %+v", p.Writes)
+	}
+}
+
+func TestResolveDamageNoneToRepair(t *testing.T) {
+	// The captured menu only offers "N/A" -> repair maps to nothing.
+	c := &fakeController{menu: sampleMenu()}
+	if p := resolve(t, c, "repair damage"); len(p.Writes) != 0 {
+		t.Errorf("repair with only N/A: expected no writes, got %+v", p.Writes)
+	}
+	// A damaged car with real options repairs to the "All" option.
+	dmg := &fakeController{menu: []rest.PitMenuItem{
+		{Name: "DAMAGE:", PMCValue: 2, Settings: []string{"None", "Bodywork", "All"}},
+	}}
+	if p := resolve(t, dmg, "repair damage"); p.Writes[0].PMC != 2 || p.Writes[0].Setting != 2 {
+		t.Errorf("repair all: got %+v", p.Writes)
+	}
+}
+
+func TestResolveTyrePressureNotDoubleParsed(t *testing.T) {
+	// "front tyre pressure 140" must be a pressure action only, not also a tyre
+	// change.
+	u := Parse("front tyre pressure 140")
+	if len(u.Actions) != 1 || u.Actions[0].Type != ActPressure {
+		t.Fatalf("expected single pressure action, got %+v", u.Actions)
 	}
 }
 

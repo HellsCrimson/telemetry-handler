@@ -34,6 +34,19 @@ const (
 	ActEnergy
 	// ActTyres selects which tyres to change (and optionally the compound).
 	ActTyres
+	// ActPressure sets tyre pressures (front/rear/all) to an absolute value or a
+	// relative click delta.
+	ActPressure
+	// ActBrakeDuct sets brake-duct opening (front/rear/all): open/closed or a %.
+	ActBrakeDuct
+	// ActBrakes toggles brake replacement (On = replace).
+	ActBrakes
+	// ActWing sets the rear-wing angle: absolute degrees or a relative click delta.
+	ActWing
+	// ActGrille sets the radiator grille/tape: absolute level or a relative delta.
+	ActGrille
+	// ActDamage toggles damage repair (On = repair).
+	ActDamage
 	// ActPit requests (or cancels) a pit stop — the "box this lap" call. Note LMU
 	// has no pit-request entry in the pit menu, so this currently maps to nothing.
 	ActPit
@@ -59,10 +72,25 @@ type Action struct {
 	FuelSet bool    // an explicit litre amount was given
 	FuelMax bool    // "fill it up" / "full tank"
 
-	// Tyres (ActTyres).
+	// Tyres / pressures / brake ducts (ActTyres, ActPressure, ActBrakeDuct) share
+	// the front/rear/all selection.
 	Which    TyreSel
 	NoTyres  bool   // "don't change tyres" / "keep tyres"
 	Compound string // "soft"/"medium"/"hard"/"wet"/"intermediate", or "" if unspecified
+
+	// Generic numeric for ActPressure/ActWing/ActGrille/ActBrakeDuct: an absolute
+	// target (Value/ValueSet) or a relative click delta (Delta/DeltaSet).
+	Value    float64
+	ValueSet bool
+	Delta    int
+	DeltaSet bool
+
+	// Brake-duct openness (ActBrakeDuct).
+	Open   bool
+	Closed bool
+
+	// Boolean toggles: ActBrakes (replace brakes), ActDamage (repair). On=do it.
+	On bool
 
 	// Pit (ActPit).
 	PitOn bool // true = request a stop, false = cancel the stop
@@ -149,6 +177,24 @@ func parseActions(norm string, words []string) []Action {
 	if a, ok := parseFuel(norm, words); ok {
 		actions = append(actions, a)
 	}
+	if a, ok := parsePressure(norm, words); ok {
+		actions = append(actions, a)
+	}
+	if a, ok := parseBrakeDuct(norm, words); ok {
+		actions = append(actions, a)
+	}
+	if a, ok := parseBrakes(norm); ok {
+		actions = append(actions, a)
+	}
+	if a, ok := parseWing(norm, words); ok {
+		actions = append(actions, a)
+	}
+	if a, ok := parseGrille(norm, words); ok {
+		actions = append(actions, a)
+	}
+	if a, ok := parseDamage(norm); ok {
+		actions = append(actions, a)
+	}
 	if a, ok := parseTyres(norm); ok {
 		actions = append(actions, a)
 	}
@@ -156,6 +202,143 @@ func parseActions(norm string, words []string) []Action {
 		actions = append(actions, a)
 	}
 	return actions
+}
+
+// tyreSelFrom reads a front/rear/all selection from the text, defaulting to all.
+func tyreSelFrom(norm string) TyreSel {
+	switch {
+	case strings.Contains(norm, "front"):
+		return TyreFront
+	case strings.Contains(norm, "rear") || strings.Contains(norm, "back"):
+		return TyreRear
+	default:
+		return TyreAll
+	}
+}
+
+// parseRelative reads a relative adjustment ("more"/"less", "up"/"down",
+// "plus N"/"minus N"). The magnitude is the named number, else 1.
+func parseRelative(norm string, words []string) (int, bool) {
+	up := strings.Contains(norm, "more") || strings.Contains(norm, "increase") ||
+		strings.Contains(norm, "plus") || strings.Contains(norm, "raise") ||
+		strings.Contains(norm, "higher") || slices.Contains(words, "up")
+	down := strings.Contains(norm, "less") || strings.Contains(norm, "decrease") ||
+		strings.Contains(norm, "reduce") || strings.Contains(norm, "minus") ||
+		strings.Contains(norm, "lower") || slices.Contains(words, "down")
+	if !up && !down {
+		return 0, false
+	}
+	mag := 1
+	if n, ok := findNumber(norm, words); ok && n > 0 {
+		mag = n
+	}
+	if down {
+		return -mag, true
+	}
+	return mag, true
+}
+
+func parsePressure(norm string, words []string) (Action, bool) {
+	if !strings.Contains(norm, "pressure") && !strings.Contains(norm, "psi") {
+		return Action{}, false
+	}
+	a := Action{Type: ActPressure, Which: tyreSelFrom(norm)}
+	if d, ok := parseRelative(norm, words); ok {
+		a.Delta, a.DeltaSet = d, true
+		return a, true
+	}
+	if n, ok := findNumber(norm, words); ok {
+		a.Value, a.ValueSet = float64(n), true
+		return a, true
+	}
+	return Action{}, false
+}
+
+func parseBrakeDuct(norm string, words []string) (Action, bool) {
+	if !strings.Contains(norm, "duct") {
+		return Action{}, false
+	}
+	a := Action{Type: ActBrakeDuct, Which: tyreSelFrom(norm)}
+	switch {
+	case strings.Contains(norm, "open"):
+		a.Open = true
+		return a, true
+	case strings.Contains(norm, "close") || strings.Contains(norm, "closed") || strings.Contains(norm, "shut"):
+		a.Closed = true
+		return a, true
+	}
+	if d, ok := parseRelative(norm, words); ok {
+		a.Delta, a.DeltaSet = d, true
+		return a, true
+	}
+	if n, ok := findNumber(norm, words); ok {
+		a.Value, a.ValueSet = float64(n), true
+		return a, true
+	}
+	return Action{}, false
+}
+
+func parseBrakes(norm string) (Action, bool) {
+	// "replace/change/new/fresh brakes" — but NOT "brake duct" (handled above).
+	if !strings.Contains(norm, "brake") || strings.Contains(norm, "duct") {
+		return Action{}, false
+	}
+	change := strings.Contains(norm, "replace") || strings.Contains(norm, "change") ||
+		strings.Contains(norm, "new") || strings.Contains(norm, "fresh") || strings.Contains(norm, "swap")
+	keep := strings.Contains(norm, "keep") || strings.Contains(norm, "dont") || strings.Contains(norm, "no ")
+	if !change && !keep {
+		return Action{}, false
+	}
+	a := Action{Type: ActBrakes, On: true}
+	if keep { // negation wins ("don't replace brakes", "keep brakes")
+		a.On = false
+	}
+	return a, true
+}
+
+func parseWing(norm string, words []string) (Action, bool) {
+	if !strings.Contains(norm, "wing") {
+		return Action{}, false
+	}
+	a := Action{Type: ActWing}
+	if d, ok := parseRelative(norm, words); ok {
+		a.Delta, a.DeltaSet = d, true
+		return a, true
+	}
+	if n, ok := findNumber(norm, words); ok {
+		a.Value, a.ValueSet = float64(n), true
+		return a, true
+	}
+	return Action{}, false
+}
+
+func parseGrille(norm string, words []string) (Action, bool) {
+	if !strings.Contains(norm, "grille") && !strings.Contains(norm, "grill") &&
+		!strings.Contains(norm, "radiator") && !strings.Contains(norm, "tape") {
+		return Action{}, false
+	}
+	a := Action{Type: ActGrille}
+	if d, ok := parseRelative(norm, words); ok {
+		a.Delta, a.DeltaSet = d, true
+		return a, true
+	}
+	if n, ok := findNumber(norm, words); ok {
+		a.Value, a.ValueSet = float64(n), true
+		return a, true
+	}
+	return Action{}, false
+}
+
+func parseDamage(norm string) (Action, bool) {
+	if !strings.Contains(norm, "damage") && !strings.Contains(norm, "repair") && !strings.Contains(norm, "fix") {
+		return Action{}, false
+	}
+	a := Action{Type: ActDamage, On: true}
+	if strings.Contains(norm, "dont") || strings.Contains(norm, "no repair") ||
+		strings.Contains(norm, "no damage") || strings.Contains(norm, "skip") {
+		a.On = false
+	}
+	return a, true
 }
 
 func parseEnergy(norm string, words []string) (Action, bool) {
@@ -209,6 +392,10 @@ func parseFuel(norm string, words []string) (Action, bool) {
 }
 
 func parseTyres(norm string) (Action, bool) {
+	// "tyre pressure" / "tyre ducts" are their own actions, not a tyre change.
+	if strings.Contains(norm, "pressure") || strings.Contains(norm, "psi") || strings.Contains(norm, "duct") {
+		return Action{}, false
+	}
 	hasTyreWord := strings.Contains(norm, "tyre") || strings.Contains(norm, "tire") ||
 		strings.Contains(norm, "rubber")
 	compound := parseCompound(norm)

@@ -91,6 +91,18 @@ func resolveAction(items []rest.PitMenuItem, a Action) ([]PitWrite, string, bool
 		return resolveEnergy(items, a)
 	case ActTyres:
 		return resolveTyres(items, a)
+	case ActPressure:
+		return resolvePressure(items, a)
+	case ActBrakeDuct:
+		return resolveBrakeDuct(items, a)
+	case ActBrakes:
+		return resolveBrakes(items, a)
+	case ActWing:
+		return resolveWing(items, a)
+	case ActGrille:
+		return resolveGrille(items, a)
+	case ActDamage:
+		return resolveDamage(items, a)
 	case ActPit:
 		return resolvePit(items, a)
 	default:
@@ -219,6 +231,182 @@ func resolvePit(items []rest.PitMenuItem, a Action) ([]PitWrite, string, bool) {
 		}
 	}
 	return []PitWrite{pitWrite(it, idx)}, word, true
+}
+
+// resolvePressure sets tyre pressures on the relevant corners' PRESS components.
+func resolvePressure(items []rest.PitMenuItem, a Action) ([]PitWrite, string, bool) {
+	var prefixes []string
+	var which string
+	switch a.Which {
+	case TyreFront:
+		prefixes, which = []string{"FL", "FR"}, "FRONT PRESSURE"
+	case TyreRear:
+		prefixes, which = []string{"RL", "RR"}, "REAR PRESSURE"
+	default:
+		prefixes, which = []string{"FL", "FR", "RL", "RR"}, "ALL PRESSURE"
+	}
+	comps := findSuffixComponents(items, "PRESS", prefixes...)
+	if len(comps) == 0 {
+		return nil, "", false
+	}
+	idx := chooseIndex(comps[0], a)
+	writes := make([]PitWrite, 0, len(comps))
+	for _, c := range comps {
+		writes = append(writes, pitWrite(c, idx))
+	}
+	return writes, which + " " + cleanLabel(settingLabel(comps[0], idx)), true
+}
+
+// resolveBrakeDuct sets brake-duct opening on the front and/or rear duct.
+func resolveBrakeDuct(items []rest.PitMenuItem, a Action) ([]PitWrite, string, bool) {
+	var prefixes []string
+	var which string
+	switch a.Which {
+	case TyreFront:
+		prefixes, which = []string{"F"}, "FRONT DUCT"
+	case TyreRear:
+		prefixes, which = []string{"R"}, "REAR DUCT"
+	default:
+		prefixes, which = []string{"F", "R"}, "DUCTS"
+	}
+	comps := findDuctComponents(items, prefixes...)
+	if len(comps) == 0 {
+		return nil, "", false
+	}
+	writes := make([]PitWrite, 0, len(comps))
+	for _, c := range comps {
+		var idx int
+		switch {
+		case a.Open:
+			if i, ok := indexOfKeyword(c.Settings, "OPEN"); ok {
+				idx = i
+			}
+		case a.Closed:
+			if i, ok := indexOfKeyword(c.Settings, "CLOSED|SHUT"); ok {
+				idx = i
+			} else {
+				idx = len(c.Settings) - 1
+			}
+		default:
+			idx = chooseIndex(c, a)
+		}
+		writes = append(writes, pitWrite(c, idx))
+	}
+	return writes, which + " " + cleanLabel(settingLabel(comps[0], writes[0].Setting)), true
+}
+
+// resolveBrakes toggles the REPLACE BRAKES component.
+func resolveBrakes(items []rest.PitMenuItem, a Action) ([]PitWrite, string, bool) {
+	it, ok := findItem(items, "REPLACE BRAKE")
+	if !ok || len(it.Settings) == 0 {
+		return nil, "", false
+	}
+	key, word := "NO|NONE", "KEEP BRAKES"
+	if a.On {
+		key, word = "YES", "REPLACE BRAKES"
+	}
+	i, ok := indexOfKeyword(it.Settings, key)
+	if !ok {
+		return nil, "", false
+	}
+	return []PitWrite{pitWrite(it, i)}, word, true
+}
+
+// resolveWing sets the rear-wing angle (absolute degrees or a relative delta).
+func resolveWing(items []rest.PitMenuItem, a Action) ([]PitWrite, string, bool) {
+	it, ok := findItem(items, "R WING", "REAR WING", "WING")
+	if !ok || len(it.Settings) == 0 {
+		return nil, "", false
+	}
+	idx := chooseIndex(it, a)
+	return []PitWrite{pitWrite(it, idx)}, "WING " + cleanLabel(settingLabel(it, idx)), true
+}
+
+// resolveGrille sets the radiator grille/tape level (absolute or relative).
+func resolveGrille(items []rest.PitMenuItem, a Action) ([]PitWrite, string, bool) {
+	it, ok := findItem(items, "GRILLE", "GRILL", "RADIATOR", "TAPE")
+	if !ok || len(it.Settings) == 0 {
+		return nil, "", false
+	}
+	idx := chooseIndex(it, a)
+	return []PitWrite{pitWrite(it, idx)}, "GRILLE " + cleanLabel(settingLabel(it, idx)), true
+}
+
+// resolveDamage toggles damage repair. With nothing repairable (only an "N/A"
+// option) it reports a miss rather than a no-op write.
+func resolveDamage(items []rest.PitMenuItem, a Action) ([]PitWrite, string, bool) {
+	it, ok := findItem(items, "DAMAGE")
+	if !ok || len(it.Settings) == 0 {
+		return nil, "", false
+	}
+	if !a.On {
+		if i, ok := indexOfKeyword(it.Settings, "NO|NONE"); ok {
+			return []PitWrite{pitWrite(it, i)}, "NO REPAIR", true
+		}
+		return []PitWrite{pitWrite(it, 0)}, "NO REPAIR", true
+	}
+	if i, ok := indexOfKeyword(it.Settings, "ALL|FULL|YES|REPAIR"); ok {
+		return []PitWrite{pitWrite(it, i)}, "REPAIR " + cleanLabel(settingLabel(it, i)), true
+	}
+	if len(it.Settings) > 1 {
+		i := len(it.Settings) - 1
+		return []PitWrite{pitWrite(it, i)}, "REPAIR " + cleanLabel(settingLabel(it, i)), true
+	}
+	return nil, "", false // only "N/A" — nothing to repair
+}
+
+// chooseIndex resolves an option index from an action's numeric value: a relative
+// click delta off the current selection, an absolute closest-number match, else
+// the current selection unchanged.
+func chooseIndex(it rest.PitMenuItem, a Action) int {
+	switch {
+	case a.DeltaSet:
+		return clampIdx(it.CurrentSetting+a.Delta, len(it.Settings))
+	case a.ValueSet:
+		return indexOfClosestNumber(it.Settings, a.Value)
+	default:
+		return clampIdx(it.CurrentSetting, len(it.Settings))
+	}
+}
+
+func clampIdx(i, n int) int {
+	if i < 0 {
+		return 0
+	}
+	if i >= n {
+		return n - 1
+	}
+	return i
+}
+
+// findSuffixComponents returns components named "<prefix> <suffix>" (e.g.
+// "FL PRESS") for each prefix, in prefix order.
+func findSuffixComponents(items []rest.PitMenuItem, suffix string, prefixes ...string) []rest.PitMenuItem {
+	var out []rest.PitMenuItem
+	for _, p := range prefixes {
+		for _, it := range items {
+			up := strings.ToUpper(it.Name)
+			if strings.HasPrefix(up, p+" ") && strings.Contains(up, suffix) {
+				out = append(out, it)
+			}
+		}
+	}
+	return out
+}
+
+// findDuctComponents returns the brake-duct components for the given side
+// prefixes ("F"/"R"), matching names like "F BRAKE DUCT".
+func findDuctComponents(items []rest.PitMenuItem, prefixes ...string) []rest.PitMenuItem {
+	var out []rest.PitMenuItem
+	for _, p := range prefixes {
+		for _, it := range items {
+			up := strings.ToUpper(it.Name)
+			if strings.HasPrefix(up, p+" ") && strings.Contains(up, "DUCT") {
+				out = append(out, it)
+			}
+		}
+	}
+	return out
 }
 
 // Apply writes every change in the plan, stopping at the first error.
@@ -400,6 +588,18 @@ func actionWord(a Action) string {
 		return "ENERGY"
 	case ActTyres:
 		return "TYRES"
+	case ActPressure:
+		return "PRESSURE"
+	case ActBrakeDuct:
+		return "DUCT"
+	case ActBrakes:
+		return "BRAKES"
+	case ActWing:
+		return "WING"
+	case ActGrille:
+		return "GRILLE"
+	case ActDamage:
+		return "DAMAGE"
 	case ActPit:
 		return "PIT"
 	default:
