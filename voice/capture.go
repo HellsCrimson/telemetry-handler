@@ -3,24 +3,31 @@ package voice
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
+// gracefulStopTimeout is how long we wait for the recorder to finalize and exit
+// after asking it to stop (SIGINT on Unix, "q" on stdin for ffmpeg on Windows)
+// before force-killing it.
+const gracefulStopTimeout = 3 * time.Second
+
 // ExecCapturer records microphone audio by running an external recorder process
-// (arecord by default on Linux) that writes a WAV file, then stopping it on the
-// PTT release. CmdTemplate optionally overrides the recorder: a space-separated
-// command where the literal token "{out}" is replaced with the output WAV path
-// (e.g. "parecord --file-format=wav --rate=16000 --channels=1 {out}"). Empty uses
-// the platform default. WAV is mono 16 kHz, what whisper.cpp expects.
+// that writes a WAV file, then stopping it on the PTT release. CmdTemplate
+// optionally overrides the recorder: a space-separated command where the literal
+// token "{out}" is replaced with the output WAV path. Empty uses the platform
+// default (arecord on Linux, ffmpeg/dshow on Windows). WAV is mono 16 kHz, what
+// whisper.cpp expects.
 type ExecCapturer struct {
 	CmdTemplate string
 }
 
 // Capture starts the recorder, waits for stop (PTT release) or ctx cancellation,
-// then interrupts the recorder so it finalizes the WAV header and returns the
-// file path. The caller removes the file via Cleanup.
+// then stops the recorder cleanly so it finalizes the WAV, and returns the file
+// path. The caller removes the file via Cleanup.
 func (e ExecCapturer) Capture(ctx context.Context, stop <-chan struct{}) (string, error) {
 	f, err := os.CreateTemp("", "voice-*.wav")
 	if err != nil {
@@ -35,8 +42,10 @@ func (e ExecCapturer) Capture(ctx context.Context, stop <-chan struct{}) (string
 		return "", err
 	}
 
-	// The recorder runs on its own; we control its lifetime by signalling it.
 	cmd := exec.Command(name, args...)
+	// A stdin pipe lets platforms that stop the recorder via a stdin command
+	// (ffmpeg's "q") finalize the file; recorders that ignore stdin are unaffected.
+	stdin, _ := cmd.StdinPipe()
 	if err := cmd.Start(); err != nil {
 		os.Remove(out)
 		return "", fmt.Errorf("start %s: %w", name, err)
@@ -47,10 +56,8 @@ func (e ExecCapturer) Capture(ctx context.Context, stop <-chan struct{}) (string
 	case <-ctx.Done():
 	}
 
-	// Interrupt so a seekable WAV recorder (arecord) patches the RIFF length and
-	// closes cleanly; fall back to Kill if it ignores the signal.
-	stopProcess(cmd)
-	_ = cmd.Wait()
+	stopRecorder(cmd, stdin)
+	waitOrKill(cmd, gracefulStopTimeout)
 
 	if fi, err := os.Stat(out); err != nil || fi.Size() == 0 {
 		os.Remove(out)
@@ -77,4 +84,31 @@ func (e ExecCapturer) command(out string) (string, []string, error) {
 		return fields[0], fields[1:], nil
 	}
 	return defaultCaptureCommand(out)
+}
+
+// waitOrKill waits for the recorder to exit after a graceful stop, force-killing
+// it if it does not finish within grace (so a recorder that ignores the stop
+// signal cannot hang the pipeline).
+func waitOrKill(cmd *exec.Cmd, grace time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(grace):
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		<-done
+	}
+}
+
+// closeStdin closes a recorder's stdin pipe if present (shared by the platform
+// stopRecorder implementations).
+func closeStdin(stdin io.WriteCloser) {
+	if stdin != nil {
+		stdin.Close()
+	}
 }

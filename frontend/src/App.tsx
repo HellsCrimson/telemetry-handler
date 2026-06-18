@@ -868,7 +868,7 @@ export default function App() {
                   <div className="panel" style={{ gridColumn: "1 / -1" }}>
                     <h2>Voice control (LMU pit, push-to-talk)</h2>
                     <label className="check"><input type="checkbox" checked={!!v.enabled} onChange={(e) => patch((c) => (c.voice.enabled = e.target.checked))} /> Enable offline voice commands</label>
-                    <p className="hint">Hold the push-to-talk trigger and speak a pit call (e.g. “fuel to 30, change all tyres, box this lap”). It is transcribed locally with whisper.cpp, then shown on the overlay for a few seconds — say “yes” to confirm before it is applied to LMU's pit menu. Linux only.</p>
+                    <p className="hint">Hold the push-to-talk trigger and speak a pit call (e.g. “fuel to 30, change all tyres, box this lap”). It is transcribed locally with whisper.cpp, then shown on the overlay for a few seconds — say “yes” to confirm before it is applied to LMU's pit menu. Works on Linux and Windows (the FIFO trigger is Linux-only; use the button trigger on Windows).</p>
 
                     <h3 className="subhead">Speech-to-text (whisper.cpp)</h3>
                     <label>Whisper binary <input autoComplete="off" placeholder="/path/to/whisper-cli" value={v.whisper_bin ?? ""} onChange={(e) => patch((c) => (c.voice.whisper_bin = e.target.value))} /></label>
@@ -895,11 +895,11 @@ export default function App() {
                     ) : (
                       <>
                         <div className="grid2">
-                          <label>Device <input autoComplete="off" placeholder="/dev/input/eventX" value={v.button_device ?? ""} onChange={(e) => patch((c) => (c.voice.button_device = e.target.value))} /></label>
+                          <label>Device <input autoComplete="off" placeholder="/dev/input/eventX (Linux) or 0 (Windows joystick id)" value={v.button_device ?? ""} onChange={(e) => patch((c) => (c.voice.button_device = e.target.value))} /></label>
                           <label>Button code <input type="number" min={0} value={typeof v.button_code === "number" ? v.button_code : 0} onChange={(e) => patch((c) => (c.voice.button_code = Number(e.target.value)))} /></label>
                         </div>
                         <button type="button" onClick={learnVoiceButton} disabled={learningButton}>{learningButton ? "Press a button now…" : "Learn button"}</button>
-                        <p className="hint">Click “Learn button”, then press the wheel-rim button you want to use. Requires read access to /dev/input (input group or a udev rule).</p>
+                        <p className="hint">Click “Learn button”, then press the wheel-rim button you want to use. Linux: reads evdev (needs /dev/input access — input group or a udev rule). Windows: reads the wheel via the joystick API (no extra setup).</p>
                       </>
                     )}
                     <p className="hint">Apply restarts voice on the next launch; Save persists to config.json. Whisper/recorder changes take effect on restart.</p>

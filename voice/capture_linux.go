@@ -3,6 +3,7 @@
 package voice
 
 import (
+	"io"
 	"os"
 	"os/exec"
 )
@@ -13,9 +14,10 @@ func defaultCaptureCommand(out string) (string, []string, error) {
 	return "arecord", []string{"-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "wav", out}, nil
 }
 
-// stopProcess interrupts the recorder so it finalizes the WAV file; arecord
+// stopRecorder interrupts the recorder so it finalizes the WAV file; arecord
 // re-writes the RIFF length and exits cleanly on SIGINT.
-func stopProcess(cmd *exec.Cmd) {
+func stopRecorder(cmd *exec.Cmd, stdin io.WriteCloser) {
+	closeStdin(stdin)
 	if cmd.Process == nil {
 		return
 	}
