@@ -9,7 +9,8 @@ export {
     Overlay,
     Recording,
     Terminal,
-    Voice
+    Voice,
+    VoiceTTS
 } from "./models.js";
 
 export type {

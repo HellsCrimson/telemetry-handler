@@ -328,6 +328,16 @@ export default function App() {
     }
   }
 
+  async function testVoiceTTS() {
+    setStatus("Speaking test phrase…");
+    try {
+      await Service.TestVoiceTTS(config.voice.tts);
+      setStatus("TTS test played");
+    } catch (e) {
+      setStatus(String(e), "error");
+    }
+  }
+
   async function previewButtons() {
     try {
       await Service.PreviewMoza(config.moza);
@@ -902,7 +912,22 @@ export default function App() {
                         <p className="hint">Click “Learn button”, then press the wheel-rim button you want to use. Linux: reads evdev (needs /dev/input access — input group or a udev rule). Windows: reads the wheel via the joystick API (no extra setup).</p>
                       </>
                     )}
-                    <p className="hint">Apply restarts voice on the next launch; Save persists to config.json. Whisper/recorder changes take effect on restart.</p>
+                    <h3 className="subhead">Spoken output (read messages aloud)</h3>
+                    {(() => {
+                      const tts = v.tts ?? {};
+                      return (
+                        <>
+                          <label className="check"><input type="checkbox" checked={!!tts.enabled} onChange={(e) => patch((c) => (c.voice.tts.enabled = e.target.checked))} /> Read confirmations &amp; results aloud</label>
+                          <label>Synth command <input autoComplete="off" placeholder="espeak-ng -w {out}" value={tts.cmd ?? ""} onChange={(e) => patch((c) => (c.voice.tts.cmd = e.target.value))} /></label>
+                          <p className="hint">A local TTS CLI that writes a WAV. “{"{out}"}” is the WAV path; “{"{txt}"}”, if present, is a temp file with the text (else text is sent on stdin). Examples:<br /><code>espeak-ng -w {"{out}"}</code> (robotic, zero-setup)<br /><code>kokoro-tts {"{txt}"} {"{out}"} --voice af_sarah --model /path/kokoro-v1.0.onnx --voices /path/voices-v1.0.bin</code></p>
+                          <label>Player override <input autoComplete="off" placeholder="(default: paplay) {out}" value={tts.player_cmd ?? ""} onChange={(e) => patch((c) => (c.voice.tts.player_cmd = e.target.value))} /></label>
+                          <label className="check"><input type="checkbox" checked={!!tts.speak_info} onChange={(e) => patch((c) => (c.voice.tts.speak_info = e.target.checked))} /> Also read the transcript echo aloud</label>
+                          <button type="button" onClick={testVoiceTTS}>Test voice</button>
+                        </>
+                      );
+                    })()}
+
+                    <p className="hint">Apply restarts voice on the next launch; Save persists to config.json. Whisper/recorder/TTS changes take effect on restart.</p>
                   </div>
                 );
               })()}

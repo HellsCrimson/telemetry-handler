@@ -39,6 +39,9 @@ const (
 	defaultVoiceTrigger  = "fifo"
 	defaultVoiceFIFOPath = "/tmp/telemetry-handler-ptt"
 	defaultVoiceConfirm  = 6.0
+	// defaultTTSCmd is a zero-setup synth command (robotic but always available);
+	// swap it for kokoro-tts etc. in the dashboard for a natural voice.
+	defaultTTSCmd = "espeak-ng -w {out}"
 )
 
 type Color [3]uint8
@@ -80,6 +83,27 @@ type Voice struct {
 	// ConfirmSeconds is how long a staged pit change waits for an affirmation
 	// ("yes") before it is dropped. 0 uses the built-in default.
 	ConfirmSeconds float64 `json:"confirm_seconds,omitempty"`
+	// TTS reads the assistant's messages (confirmation prompts, results) aloud.
+	TTS VoiceTTS `json:"tts"`
+}
+
+// VoiceTTS configures spoken output. Synthesis is delegated to a local CLI (Cmd)
+// that writes a WAV, which is then played — a single command-based path that
+// drives anything from espeak-ng to kokoro-tts. No embedded model, no server.
+type VoiceTTS struct {
+	Enabled bool `json:"enabled"`
+	// Cmd is the synth command. "{out}" is the output WAV; "{txt}" — when present —
+	// is a temp file holding the text (kokoro-tts reads a file), else the text is
+	// fed on stdin (espeak-ng/piper). Examples:
+	//   espeak-ng -w {out}
+	//   kokoro-tts {txt} {out} --voice af_sarah --model /path/kokoro-v1.0.onnx --voices /path/voices-v1.0.bin
+	Cmd string `json:"cmd"`
+	// PlayerCmd overrides the audio player ("{out}" = WAV path); empty uses paplay
+	// (Linux) / PowerShell SoundPlayer (Windows).
+	PlayerCmd string `json:"player_cmd,omitempty"`
+	// SpeakInfo also reads the neutral transcript echo aloud; by default only the
+	// confirmation prompt, result and errors are spoken.
+	SpeakInfo bool `json:"speak_info,omitempty"`
 }
 
 // LMU configures polling of Le Mans Ultimate's local REST API (port 6397), which
@@ -234,6 +258,10 @@ func Default() Config {
 			Trigger:        defaultVoiceTrigger,
 			FIFOPath:       defaultVoiceFIFOPath,
 			ConfirmSeconds: defaultVoiceConfirm,
+			TTS: VoiceTTS{
+				Enabled: false,
+				Cmd:     defaultTTSCmd,
+			},
 		},
 	}
 }
@@ -363,6 +391,9 @@ func (v Voice) Validate() error {
 	}
 	if v.ConfirmSeconds < 0 {
 		return fmt.Errorf("voice.confirm_seconds must be >= 0")
+	}
+	if v.TTS.Enabled && v.TTS.Cmd == "" {
+		return fmt.Errorf("voice.tts.cmd is required when voice.tts is enabled")
 	}
 	return nil
 }

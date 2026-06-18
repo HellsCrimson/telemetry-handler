@@ -317,6 +317,16 @@ export function TestMozaLights(): $CancellablePromise<void> {
     return $Call.ByID(573481066);
 }
 
+/**
+ * TestVoiceTTS synthesizes and plays a sample phrase synchronously using the
+ * given TTS settings, so the dashboard can verify spoken output without enabling
+ * voice or restarting. Returns an error (surfaced in the UI) if synthesis or
+ * playback fails.
+ */
+export function TestVoiceTTS(t: config$0.VoiceTTS): $CancellablePromise<void> {
+    return $Call.ByID(2174446089, t);
+}
+
 // Private type creation functions
 const $$createType0 = analysis$0.Report.createFrom;
 const $$createType1 = config$0.Config.createFrom;

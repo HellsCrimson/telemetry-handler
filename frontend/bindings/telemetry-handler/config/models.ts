@@ -377,6 +377,11 @@ export class Voice {
      */
     "confirm_seconds"?: number;
 
+    /**
+     * TTS reads the assistant's messages (confirmation prompts, results) aloud.
+     */
+    "tts": VoiceTTS;
+
     /** Creates a new Voice instance. */
     constructor($$source: Partial<Voice> = {}) {
         if (!("enabled" in $$source)) {
@@ -388,6 +393,9 @@ export class Voice {
         if (!("whisper_model" in $$source)) {
             this["whisper_model"] = "";
         }
+        if (!("tts" in $$source)) {
+            this["tts"] = (new VoiceTTS());
+        }
 
         Object.assign(this, $$source);
     }
@@ -396,8 +404,62 @@ export class Voice {
      * Creates a new Voice instance from a string or object.
      */
     static createFrom($$source: any = {}): Voice {
+        const $$createField10_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tts" in $$parsedSource) {
+            $$parsedSource["tts"] = $$createField10_0($$parsedSource["tts"]);
+        }
         return new Voice($$parsedSource as Partial<Voice>);
+    }
+}
+
+/**
+ * VoiceTTS configures spoken output. Synthesis is delegated to a local CLI (Cmd)
+ * that writes a WAV, which is then played — a single command-based path that
+ * drives anything from espeak-ng to kokoro-tts. No embedded model, no server.
+ */
+export class VoiceTTS {
+    "enabled": boolean;
+
+    /**
+     * Cmd is the synth command. "{out}" is the output WAV; "{txt}" — when present —
+     * is a temp file holding the text (kokoro-tts reads a file), else the text is
+     * fed on stdin (espeak-ng/piper). Examples:
+     *   espeak-ng -w {out}
+     *   kokoro-tts {txt} {out} --voice af_sarah --model /path/kokoro-v1.0.onnx --voices /path/voices-v1.0.bin
+     */
+    "cmd": string;
+
+    /**
+     * PlayerCmd overrides the audio player ("{out}" = WAV path); empty uses paplay
+     * (Linux) / PowerShell SoundPlayer (Windows).
+     */
+    "player_cmd"?: string;
+
+    /**
+     * SpeakInfo also reads the neutral transcript echo aloud; by default only the
+     * confirmation prompt, result and errors are spoken.
+     */
+    "speak_info"?: boolean;
+
+    /** Creates a new VoiceTTS instance. */
+    constructor($$source: Partial<VoiceTTS> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("cmd" in $$source)) {
+            this["cmd"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new VoiceTTS instance from a string or object.
+     */
+    static createFrom($$source: any = {}): VoiceTTS {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new VoiceTTS($$parsedSource as Partial<VoiceTTS>);
     }
 }
 
@@ -410,3 +472,4 @@ const $$createType4 = LMU.createFrom;
 const $$createType5 = Voice.createFrom;
 const $$createType6 = CurvePoint.createFrom;
 const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = VoiceTTS.createFrom;

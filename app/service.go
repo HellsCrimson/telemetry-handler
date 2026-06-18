@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -70,6 +71,12 @@ type Service struct {
 	// polling is enabled and shared by the poller and the on-demand setup bindings;
 	// nil when LMU polling is disabled.
 	lmuClient *rest.Client
+
+	// speaker reads the voice assistant's messages aloud, when voice TTS is
+	// enabled; nil otherwise. Built at startup and rebuilt by ApplyConfig, so it is
+	// guarded by speakerMu (the notify path reads it from the engine goroutine).
+	speaker   voice.Speaker
+	speakerMu sync.Mutex
 
 	// overlayDesired is the user's on/off intent (the UI toggle). The actual
 	// native window is started/stopped by the supervisor only while the game is
@@ -158,12 +165,25 @@ func (s *Service) startVoice(ctx context.Context, cfg config.Config) {
 	if client == nil {
 		client = rest.NewClient(cfg.LMU.BaseURL, lmuRESTTimeout)
 	}
-	// Surface every voice notice both on the overlay banner and in the log, so the
+	// Spoken output: read the assistant's messages aloud, like a race engineer, by
+	// shelling out to a local TTS CLI (espeak-ng / kokoro-tts) and playing the WAV.
+	// Non-fatal — a bad command just means no readback.
+	if cfg.Voice.TTS.Enabled {
+		s.applyVoiceTTS(ctx, cfg.Voice.TTS)
+	}
+
+	// Surface every voice notice on the overlay banner and in the log, so the
 	// feedback (confirmation prompt, result, errors) is visible even when the
-	// overlay is off — essential for bring-up.
+	// overlay is off — essential for bring-up — and speak the important ones. The
+	// speaker and speak-info are read live so an ApplyConfig TTS change takes effect
+	// without restarting.
 	notify := func(text string, level int, ttl time.Duration) {
 		log.Printf("voice: %s", text)
 		s.runtime.SetVoiceNotice(text, level, ttl)
+		sp := s.currentSpeaker()
+		if sp != nil && (level != voice.LevelInfo || s.runtime.Config().Voice.TTS.SpeakInfo) {
+			sp.Speak(spokenText(text))
+		}
 	}
 	engine, err := voice.Build(ctx, voiceConfig(cfg.Voice), client, notify, log.Printf)
 	if err != nil {
@@ -173,6 +193,34 @@ func (s *Service) startVoice(ctx context.Context, cfg config.Config) {
 	}
 	log.Printf("voice: push-to-talk ready (trigger=%s)", voiceTriggerName(cfg.Voice))
 	go engine.Run(ctx)
+}
+
+// applyVoiceTTS (re)builds the spoken-output speaker from the TTS config, or
+// clears it when TTS is disabled. Safe to call at startup and from ApplyConfig.
+func (s *Service) applyVoiceTTS(ctx context.Context, t config.VoiceTTS) {
+	if !t.Enabled {
+		s.setSpeaker(nil)
+		return
+	}
+	sp, err := voice.NewSpeaker(ctx, voiceTTSConfig(t), log.Printf)
+	if err != nil {
+		log.Printf("voice: tts disabled: %v", err)
+		s.setSpeaker(nil)
+		return
+	}
+	s.setSpeaker(sp)
+}
+
+func (s *Service) setSpeaker(sp voice.Speaker) {
+	s.speakerMu.Lock()
+	s.speaker = sp
+	s.speakerMu.Unlock()
+}
+
+func (s *Service) currentSpeaker() voice.Speaker {
+	s.speakerMu.Lock()
+	defer s.speakerMu.Unlock()
+	return s.speaker
 }
 
 // voiceConfig maps the persisted config.Voice onto the voice package's Config.
@@ -196,6 +244,24 @@ func voiceTriggerName(v config.Voice) string {
 		return "button"
 	}
 	return "fifo"
+}
+
+// voiceTTSConfig maps the persisted config.VoiceTTS onto the voice package's
+// TTSConfig.
+func voiceTTSConfig(t config.VoiceTTS) voice.TTSConfig {
+	return voice.TTSConfig{
+		Cmd:       t.Cmd,
+		PlayerCmd: t.PlayerCmd,
+	}
+}
+
+// spokenText tidies a banner notice for speech: lower-case (so "FUEL" isn't
+// spelled out) and drop the "(no X)" miss annotation, which is noise aloud.
+func spokenText(text string) string {
+	if i := strings.Index(text, "(no "); i >= 0 {
+		text = strings.TrimSpace(text[:i])
+	}
+	return strings.ToLower(text)
 }
 
 // superviseReference bridges the strategy engine and the local store off the hot
@@ -613,6 +679,16 @@ func (s *Service) LearnVoiceButton(timeoutSeconds int) (voice.Button, error) {
 	return voice.LearnButton(ctx)
 }
 
+// TestVoiceTTS synthesizes and plays a sample phrase synchronously using the
+// given TTS settings, so the dashboard can verify spoken output without enabling
+// voice or restarting. Returns an error (surfaced in the UI) if synthesis or
+// playback fails.
+func (s *Service) TestVoiceTTS(t config.VoiceTTS) error {
+	ctx, cancel := context.WithTimeout(s.requestContext(), 30*time.Second)
+	defer cancel()
+	return voice.SpeakOnce(ctx, voiceTTSConfig(t), "Confirm, all tyres new wet, say yes.", log.Printf)
+}
+
 // requestContext returns the service context for a bound call, falling back to
 // Background before startup has stored one.
 func (s *Service) requestContext() context.Context {
@@ -638,6 +714,12 @@ func (s *Service) ApplyConfig(cfg config.Config) (config.Config, error) {
 	if s.ctx != nil && s.overlay.Running() {
 		s.overlay.Stop()
 		s.reconcileOverlay(s.ctx)
+	}
+	// Rebuild the spoken-output speaker so TTS edits (command, voice) take effect
+	// without a restart — the rest of the voice engine (trigger/whisper) still
+	// needs one. Only when voice itself is running (ctx set).
+	if s.ctx != nil {
+		s.applyVoiceTTS(s.ctx, cfg.Voice.TTS)
 	}
 	return s.runtime.Config(), nil
 }
