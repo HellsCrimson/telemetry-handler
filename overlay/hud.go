@@ -57,6 +57,11 @@ type HUD struct {
 	// SteeringDegrees is the signed wheel rotation to display (lock-to-lock range
 	// already applied), so the backend just rotates the image by this much.
 	SteeringDegrees float64
+	// Notice is a transient message drawn as a banner over the HUD (e.g. the voice
+	// assistant's "CONFIRM FUEL 30L SAY YES"). Empty draws nothing. NoticeLevel
+	// selects the banner colour (see the voice package's Level* constants).
+	Notice      string
+	NoticeLevel int
 }
 
 // FormatHUD builds the instantaneous HUD view model from a telemetry sample. It

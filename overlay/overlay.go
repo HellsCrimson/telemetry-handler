@@ -21,6 +21,11 @@ type Backend interface {
 // reports it (LMU), or 0 to fall back to the configured default (Forza).
 type Source func() (telemetry forza.Telemetry, available bool, receivedAt time.Time, steeringRangeDeg float64)
 
+// NoticeSource provides a transient banner message (text + level) to overlay on
+// top of the HUD, or "" for none. It is polled alongside Source each frame and is
+// used by the voice assistant to show staged/confirmed pit actions. May be nil.
+type NoticeSource func() (text string, level int)
+
 // Manager owns the lifecycle of a single running overlay so it can be toggled
 // on and off at runtime from the UI.
 type Manager struct {
@@ -42,8 +47,8 @@ func (m *Manager) Running() bool {
 
 // Start launches the overlay bound to parent's lifetime. It is a no-op if an
 // overlay is already running. The overlay config is validated (with defaults
-// filled in) before the backend is created.
-func (m *Manager) Start(parent context.Context, ov config.Overlay, source Source) error {
+// filled in) before the backend is created. notice may be nil (no banner).
+func (m *Manager) Start(parent context.Context, ov config.Overlay, source Source, notice NoticeSource) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.cancel != nil {
@@ -62,7 +67,7 @@ func (m *Manager) Start(parent context.Context, ov config.Overlay, source Source
 
 	go func() {
 		defer close(done)
-		_ = run(ctx, ov, source)
+		_ = run(ctx, ov, source, notice)
 		m.mu.Lock()
 		m.cancel = nil
 		m.done = nil
@@ -87,7 +92,7 @@ func (m *Manager) Stop() {
 	}
 }
 
-func run(ctx context.Context, ov config.Overlay, source Source) error {
+func run(ctx context.Context, ov config.Overlay, source Source, notice NoticeSource) error {
 	// Resolve which monitor to display on. When the configured output is empty
 	// or "auto" this auto-detects the game window's monitor (Hyprland); a
 	// concrete output name is respected as a manual override.
@@ -97,7 +102,9 @@ func run(ctx context.Context, ov config.Overlay, source Source) error {
 
 	updates := make(chan HUD, 1)
 	telemetry, available, receivedAt, steerRange := source()
-	updates <- history.build(telemetry, available, receivedAt, time.Now(), effectiveSteeringRange(steerRange, ov))
+	first := history.build(telemetry, available, receivedAt, time.Now(), effectiveSteeringRange(steerRange, ov))
+	applyNotice(&first, notice)
+	updates <- first
 
 	errc := make(chan error, 1)
 	go func() {
@@ -116,6 +123,7 @@ func run(ctx context.Context, ov config.Overlay, source Source) error {
 		case now := <-ticker.C:
 			telemetry, available, receivedAt, steerRange := source()
 			hud := history.build(telemetry, available, receivedAt, now, effectiveSteeringRange(steerRange, ov))
+			applyNotice(&hud, notice)
 			select {
 			case updates <- hud:
 			default:
@@ -124,4 +132,12 @@ func run(ctx context.Context, ov config.Overlay, source Source) error {
 			}
 		}
 	}
+}
+
+// applyNotice fills the HUD's banner fields from the notice source, if any.
+func applyNotice(hud *HUD, notice NoticeSource) {
+	if notice == nil {
+		return
+	}
+	hud.Notice, hud.NoticeLevel = notice()
 }

@@ -33,6 +33,12 @@ const (
 	// projections, weather forecast) — it changes on the scale of laps, not frames.
 	defaultLMUBaseURL = "http://localhost:6397"
 	defaultLMUPollHz  = 1
+
+	// Voice (push-to-talk) defaults.
+	defaultVoiceLanguage = "en"
+	defaultVoiceTrigger  = "fifo"
+	defaultVoiceFIFOPath = "/tmp/telemetry-handler-ptt"
+	defaultVoiceConfirm  = 6.0
 )
 
 type Color [3]uint8
@@ -46,6 +52,34 @@ type Config struct {
 	Terminal   Terminal  `json:"terminal_print"`
 	Overlay    Overlay   `json:"overlay"`
 	LMU        LMU       `json:"lmu"`
+	Voice      Voice     `json:"voice"`
+}
+
+// Voice configures the offline push-to-talk voice-command MVP (whisper.cpp STT +
+// a deterministic grammar driving LMU's pit menu over its REST API). It is
+// Linux-only for now and disabled by default. The trigger is either an external
+// FIFO that something writes "press"/"release" to (a Hyprland keybind, a wheel-
+// button script) or a configured evdev button read directly from /dev/input.
+type Voice struct {
+	Enabled bool `json:"enabled"`
+	// WhisperBin/WhisperModel point at a local whisper.cpp build and ggml model.
+	WhisperBin   string `json:"whisper_bin"`
+	WhisperModel string `json:"whisper_model"`
+	Language     string `json:"language,omitempty"`
+	// CaptureCmd optionally overrides the recorder; "{out}" is the WAV path. Empty
+	// uses arecord (mono 16 kHz). Example: "parecord --file-format=wav {out}".
+	CaptureCmd string `json:"capture_cmd,omitempty"`
+	// Trigger is "fifo" (default) or "button".
+	Trigger string `json:"trigger,omitempty"`
+	// FIFOPath is the named pipe for trigger=="fifo".
+	FIFOPath string `json:"fifo_path,omitempty"`
+	// ButtonDevice/ButtonCode are the evdev device + key code for trigger=="button"
+	// (populate them with the LearnVoiceButton helper rather than by hand).
+	ButtonDevice string `json:"button_device,omitempty"`
+	ButtonCode   int    `json:"button_code,omitempty"`
+	// ConfirmSeconds is how long a staged pit change waits for an affirmation
+	// ("yes") before it is dropped. 0 uses the built-in default.
+	ConfirmSeconds float64 `json:"confirm_seconds,omitempty"`
 }
 
 // LMU configures polling of Le Mans Ultimate's local REST API (port 6397), which
@@ -194,6 +228,13 @@ func Default() Config {
 			BaseURL: defaultLMUBaseURL,
 			PollHz:  defaultLMUPollHz,
 		},
+		Voice: Voice{
+			Enabled:        false,
+			Language:       defaultVoiceLanguage,
+			Trigger:        defaultVoiceTrigger,
+			FIFOPath:       defaultVoiceFIFOPath,
+			ConfirmSeconds: defaultVoiceConfirm,
+		},
 	}
 }
 
@@ -292,6 +333,36 @@ func (c Config) Validate() error {
 	}
 	if c.LMU.Enabled && c.LMU.PollHz <= 0 {
 		return fmt.Errorf("lmu.poll_hz must be greater than 0")
+	}
+	if err := c.Voice.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks the voice config when enabled: a whisper binary + model are
+// required, and the selected trigger needs its own field set.
+func (v Voice) Validate() error {
+	if !v.Enabled {
+		return nil
+	}
+	if v.WhisperBin == "" || v.WhisperModel == "" {
+		return fmt.Errorf("voice.whisper_bin and voice.whisper_model are required when voice is enabled")
+	}
+	switch v.Trigger {
+	case "", "fifo":
+		if v.FIFOPath == "" {
+			return fmt.Errorf("voice.fifo_path is required for the fifo trigger")
+		}
+	case "button":
+		if v.ButtonDevice == "" {
+			return fmt.Errorf("voice.button_device is required for the button trigger (use LearnVoiceButton)")
+		}
+	default:
+		return fmt.Errorf("voice.trigger must be \"fifo\" or \"button\"")
+	}
+	if v.ConfirmSeconds < 0 {
+		return fmt.Errorf("voice.confirm_seconds must be >= 0")
 	}
 	return nil
 }

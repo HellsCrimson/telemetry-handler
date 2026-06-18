@@ -36,6 +36,9 @@ import * as recording$0 from "../recording/models.js";
 import * as store$0 from "../store/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as voice$0 from "../voice/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as moza$0 from "../wheelbase/moza/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -195,12 +198,24 @@ export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
 }
 
 /**
+ * LearnVoiceButton listens across the system's input devices and returns the
+ * first button/key pressed, so the dashboard can capture a wheel-rim button for
+ * the voice push-to-talk trigger without the user knowing its evdev code. It
+ * blocks up to timeoutSeconds (default 10). Linux only.
+ */
+export function LearnVoiceButton(timeoutSeconds: number): $CancellablePromise<voice$0.Button> {
+    return $Call.ByID(4038755602, timeoutSeconds).then(($result: any) => {
+        return $$createType21($result);
+    });
+}
+
+/**
  * ListIndexedRecordings returns the recordings index with track/car/source
  * metadata (newest first), or an empty list when persistence is unavailable.
  */
 export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRow[]> {
     return $Call.ByID(189090443).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType23($result);
     });
 }
 
@@ -210,13 +225,13 @@ export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRo
  */
 export function ListMonitors(): $CancellablePromise<string[]> {
     return $Call.ByID(4014067021).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType24($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType26($result);
     });
 }
 
@@ -226,7 +241,7 @@ export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
  */
 export function ListSessions(): $CancellablePromise<store$0.SessionRow[]> {
     return $Call.ByID(660293959).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType28($result);
     });
 }
 
@@ -236,7 +251,7 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType30($result);
     });
 }
 
@@ -324,12 +339,13 @@ const $$createType17 = $Create.Array($$createType16);
 const $$createType18 = rest$0.Snapshot.createFrom;
 const $$createType19 = $Create.Nullable($$createType18);
 const $$createType20 = $models.TelemetrySnapshot.createFrom;
-const $$createType21 = store$0.RecordingRow.createFrom;
-const $$createType22 = $Create.Array($$createType21);
-const $$createType23 = $Create.Array($Create.Any);
-const $$createType24 = recording$0.Info.createFrom;
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = store$0.SessionRow.createFrom;
-const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = $models.ReplaySample.createFrom;
-const $$createType29 = $Create.Array($$createType28);
+const $$createType21 = voice$0.Button.createFrom;
+const $$createType22 = store$0.RecordingRow.createFrom;
+const $$createType23 = $Create.Array($$createType22);
+const $$createType24 = $Create.Array($Create.Any);
+const $$createType25 = recording$0.Info.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = store$0.SessionRow.createFrom;
+const $$createType28 = $Create.Array($$createType27);
+const $$createType29 = $models.ReplaySample.createFrom;
+const $$createType30 = $Create.Array($$createType29);

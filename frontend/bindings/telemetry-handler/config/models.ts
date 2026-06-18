@@ -16,6 +16,7 @@ export class Config {
     "terminal_print": Terminal;
     "overlay": Overlay;
     "lmu": LMU;
+    "voice": Voice;
 
     /** Creates a new Config instance. */
     constructor($$source: Partial<Config> = {}) {
@@ -43,6 +44,9 @@ export class Config {
         if (!("lmu" in $$source)) {
             this["lmu"] = (new LMU());
         }
+        if (!("voice" in $$source)) {
+            this["voice"] = (new Voice());
+        }
 
         Object.assign(this, $$source);
     }
@@ -56,6 +60,7 @@ export class Config {
         const $$createField5_0 = $$createType2;
         const $$createField6_0 = $$createType3;
         const $$createField7_0 = $$createType4;
+        const $$createField8_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("moza" in $$parsedSource) {
             $$parsedSource["moza"] = $$createField3_0($$parsedSource["moza"]);
@@ -71,6 +76,9 @@ export class Config {
         }
         if ("lmu" in $$parsedSource) {
             $$parsedSource["lmu"] = $$createField7_0($$parsedSource["lmu"]);
+        }
+        if ("voice" in $$parsedSource) {
+            $$parsedSource["voice"] = $$createField8_0($$parsedSource["voice"]);
         }
         return new Config($$parsedSource as Partial<Config>);
     }
@@ -209,7 +217,7 @@ export class Moza {
      * Creates a new Moza instance from a string or object.
      */
     static createFrom($$source: any = {}): Moza {
-        const $$createField9_0 = $$createType6;
+        const $$createField9_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("rpm_curve_points" in $$parsedSource) {
             $$parsedSource["rpm_curve_points"] = $$createField9_0($$parsedSource["rpm_curve_points"]);
@@ -323,11 +331,82 @@ export class Terminal {
     }
 }
 
+/**
+ * Voice configures the offline push-to-talk voice-command MVP (whisper.cpp STT +
+ * a deterministic grammar driving LMU's pit menu over its REST API). It is
+ * Linux-only for now and disabled by default. The trigger is either an external
+ * FIFO that something writes "press"/"release" to (a Hyprland keybind, a wheel-
+ * button script) or a configured evdev button read directly from /dev/input.
+ */
+export class Voice {
+    "enabled": boolean;
+
+    /**
+     * WhisperBin/WhisperModel point at a local whisper.cpp build and ggml model.
+     */
+    "whisper_bin": string;
+    "whisper_model": string;
+    "language"?: string;
+
+    /**
+     * CaptureCmd optionally overrides the recorder; "{out}" is the WAV path. Empty
+     * uses arecord (mono 16 kHz). Example: "parecord --file-format=wav {out}".
+     */
+    "capture_cmd"?: string;
+
+    /**
+     * Trigger is "fifo" (default) or "button".
+     */
+    "trigger"?: string;
+
+    /**
+     * FIFOPath is the named pipe for trigger=="fifo".
+     */
+    "fifo_path"?: string;
+
+    /**
+     * ButtonDevice/ButtonCode are the evdev device + key code for trigger=="button"
+     * (populate them with the LearnVoiceButton helper rather than by hand).
+     */
+    "button_device"?: string;
+    "button_code"?: number;
+
+    /**
+     * ConfirmSeconds is how long a staged pit change waits for an affirmation
+     * ("yes") before it is dropped. 0 uses the built-in default.
+     */
+    "confirm_seconds"?: number;
+
+    /** Creates a new Voice instance. */
+    constructor($$source: Partial<Voice> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("whisper_bin" in $$source)) {
+            this["whisper_bin"] = "";
+        }
+        if (!("whisper_model" in $$source)) {
+            this["whisper_model"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Voice instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Voice {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Voice($$parsedSource as Partial<Voice>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = Moza.createFrom;
 const $$createType1 = Recording.createFrom;
 const $$createType2 = Terminal.createFrom;
 const $$createType3 = Overlay.createFrom;
 const $$createType4 = LMU.createFrom;
-const $$createType5 = CurvePoint.createFrom;
-const $$createType6 = $Create.Array($$createType5);
+const $$createType5 = Voice.createFrom;
+const $$createType6 = CurvePoint.createFrom;
+const $$createType7 = $Create.Array($$createType6);

@@ -107,6 +107,34 @@ type Runtime struct {
 	// surface that the app fell back to default settings.
 	loadErrPath string
 	loadErr     string
+
+	// voiceNotice is the transient message the voice assistant wants the overlay
+	// to show (e.g. a staged pit change awaiting confirmation). It expires at
+	// voiceNoticeUntil so a stale prompt does not linger on screen.
+	voiceNoticeText  string
+	voiceNoticeLevel int
+	voiceNoticeUntil time.Time
+}
+
+// SetVoiceNotice records a transient overlay message from the voice assistant.
+// level is one of voice's Level* constants; ttl is how long it stays up.
+func (r *Runtime) SetVoiceNotice(text string, level int, ttl time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.voiceNoticeText = text
+	r.voiceNoticeLevel = level
+	r.voiceNoticeUntil = time.Now().Add(ttl)
+}
+
+// VoiceNotice returns the current voice message and its level, or "" once it has
+// expired. Read by the overlay each frame.
+func (r *Runtime) VoiceNotice() (string, int) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.voiceNoticeText == "" || time.Now().After(r.voiceNoticeUntil) {
+		return "", 0
+	}
+	return r.voiceNoticeText, r.voiceNoticeLevel
 }
 
 func NewRuntime(cfg config.Config, cfgPath string, recorder *recording.Manager, st *store.Store) *Runtime {

@@ -23,6 +23,7 @@ import (
 	"telemetry-handler/receiver"
 	"telemetry-handler/recording"
 	"telemetry-handler/store"
+	"telemetry-handler/voice"
 	"telemetry-handler/wheelbase/moza"
 )
 
@@ -135,8 +136,66 @@ func (s *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 		go s.superviseREST(ctx, cfg.LMU)
 	}
 
+	if cfg.Voice.Enabled {
+		s.startVoice(ctx, cfg)
+	} else {
+		log.Printf("voice: disabled (set voice.enabled=true in config.json and restart)")
+	}
+
 	go s.runReceiver(ctx, cfg)
 	return nil
+}
+
+// startVoice builds and runs the offline push-to-talk voice assistant: it records
+// on a PTT trigger, transcribes locally with whisper.cpp, parses pit commands,
+// stages them for confirmation on the overlay banner, and applies confirmed ones
+// to LMU's pit menu over the REST API. A construction failure (bad trigger, no
+// whisper binary) is logged and non-fatal — the rest of the app runs unchanged.
+func (s *Service) startVoice(ctx context.Context, cfg config.Config) {
+	// Voice needs the LMU REST client (pit menu read/write) even when periodic
+	// REST polling is off, so create one if the poller did not.
+	client := s.lmuClient
+	if client == nil {
+		client = rest.NewClient(cfg.LMU.BaseURL, lmuRESTTimeout)
+	}
+	// Surface every voice notice both on the overlay banner and in the log, so the
+	// feedback (confirmation prompt, result, errors) is visible even when the
+	// overlay is off — essential for bring-up.
+	notify := func(text string, level int, ttl time.Duration) {
+		log.Printf("voice: %s", text)
+		s.runtime.SetVoiceNotice(text, level, ttl)
+	}
+	engine, err := voice.Build(ctx, voiceConfig(cfg.Voice), client, notify, log.Printf)
+	if err != nil {
+		log.Printf("voice: disabled: %v", err)
+		s.runtime.SetVoiceNotice("VOICE ERROR", voice.LevelError, 6*time.Second)
+		return
+	}
+	log.Printf("voice: push-to-talk ready (trigger=%s)", voiceTriggerName(cfg.Voice))
+	go engine.Run(ctx)
+}
+
+// voiceConfig maps the persisted config.Voice onto the voice package's Config.
+func voiceConfig(v config.Voice) voice.Config {
+	ttl := time.Duration(v.ConfirmSeconds * float64(time.Second))
+	return voice.Config{
+		WhisperBin:   v.WhisperBin,
+		WhisperModel: v.WhisperModel,
+		Language:     v.Language,
+		CaptureCmd:   v.CaptureCmd,
+		Trigger:      v.Trigger,
+		FIFOPath:     v.FIFOPath,
+		ButtonDevice: v.ButtonDevice,
+		ButtonCode:   v.ButtonCode,
+		ConfirmTTL:   ttl,
+	}
+}
+
+func voiceTriggerName(v config.Voice) string {
+	if v.Trigger == "button" {
+		return "button"
+	}
+	return "fifo"
 }
 
 // superviseReference bridges the strategy engine and the local store off the hot
@@ -285,7 +344,7 @@ func (s *Service) reconcileOverlay(ctx context.Context) {
 	switch present := s.gamePresent(running); {
 	case present && !running:
 		cfg := s.runtime.Config()
-		if err := s.overlay.Start(ctx, cfg.Overlay, s.telemetrySource()); err != nil {
+		if err := s.overlay.Start(ctx, cfg.Overlay, s.telemetrySource(), s.voiceNoticeSource()); err != nil {
 			log.Printf("overlay start: %v", err)
 		}
 	case !present && running:
@@ -312,6 +371,15 @@ func (s *Service) telemetrySource() overlay.Source {
 	return func() (forza.Telemetry, bool, time.Time, float64) {
 		snap := s.runtime.LatestTelemetry()
 		return snap.Telemetry, snap.Available, snap.ReceivedAt, snap.Meta.SteeringRangeDeg
+	}
+}
+
+// voiceNoticeSource feeds the voice assistant's transient banner to the overlay.
+// It returns "" when voice is disabled or no message is active, so the overlay
+// simply draws nothing.
+func (s *Service) voiceNoticeSource() overlay.NoticeSource {
+	return func() (string, int) {
+		return s.runtime.VoiceNotice()
 	}
 }
 
@@ -530,6 +598,19 @@ func (s *Service) SetPitMenuValue(pmc int, currentSetting int) error {
 	ctx, cancel := context.WithTimeout(s.requestContext(), lmuRESTTimeout)
 	defer cancel()
 	return s.lmuClient.SetPitMenuValue(ctx, pmc, currentSetting)
+}
+
+// LearnVoiceButton listens across the system's input devices and returns the
+// first button/key pressed, so the dashboard can capture a wheel-rim button for
+// the voice push-to-talk trigger without the user knowing its evdev code. It
+// blocks up to timeoutSeconds (default 10). Linux only.
+func (s *Service) LearnVoiceButton(timeoutSeconds int) (voice.Button, error) {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 10
+	}
+	ctx, cancel := context.WithTimeout(s.requestContext(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	return voice.LearnButton(ctx)
 }
 
 // requestContext returns the service context for a bound call, falling back to

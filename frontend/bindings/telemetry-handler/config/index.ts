@@ -8,7 +8,8 @@ export {
     Moza,
     Overlay,
     Recording,
-    Terminal
+    Terminal,
+    Voice
 } from "./models.js";
 
 export type {

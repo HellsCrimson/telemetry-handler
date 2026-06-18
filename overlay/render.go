@@ -70,6 +70,46 @@ func drawHUD(pixels []uint32, width, height int, opacity float64, hud HUD) {
 			drawTellTale(pixels, width, height, iconX, graphTop+iconSize+6, iconSize, "P", hud.HandBrake, red, stroke, muted)
 		}
 	}
+
+	// A transient voice notice (confirmation prompt, result) draws as a banner
+	// across the bottom, on top of everything else so it is unmissable.
+	if hud.Notice != "" {
+		drawNotice(pixels, width, height, opacity, hud)
+	}
+}
+
+// drawNotice renders the voice assistant's transient banner across the bottom of
+// the overlay. The border colour encodes the level: amber=confirm, green=done,
+// red=error, blue=info.
+func drawNotice(pixels []uint32, width, height int, opacity float64, hud HUD) {
+	const bannerH = 16
+	y := height - bannerH
+	if y < 0 {
+		y = 0
+	}
+	bg := color.RGBA{R: 8, G: 10, B: 14, A: uint8(opacity * 245)}
+	var border color.RGBA
+	switch hud.NoticeLevel {
+	case 1: // confirm
+		border = color.RGBA{R: 240, G: 180, B: 60, A: uint8(opacity * 255)}
+	case 2: // ok
+		border = color.RGBA{R: 66, G: 212, B: 119, A: uint8(opacity * 255)}
+	case 3: // error
+		border = color.RGBA{R: 232, G: 93, B: 93, A: uint8(opacity * 255)}
+	default: // info
+		border = color.RGBA{R: 120, G: 160, B: 210, A: uint8(opacity * 255)}
+	}
+	text := color.RGBA{R: 238, G: 244, B: 248, A: uint8(opacity * 255)}
+
+	fillRect(pixels, width, height, 0, y, width, bannerH, bg)
+	drawRect(pixels, width, height, 0, y, width, bannerH, border)
+
+	// Truncate to what fits at scale 1 (6 px/char) with a small margin.
+	msg := hud.Notice
+	if maxChars := (width - 8) / 6; maxChars > 0 && len(msg) > maxChars {
+		msg = msg[:maxChars]
+	}
+	drawText(pixels, width, height, 4, y+5, 1, msg, text)
 }
 
 // drawPedalGraph plots throttle (green) and brake (red) over the last few
@@ -341,8 +381,17 @@ var font = map[rune][7]byte{
 	'R': {0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11},
 	'S': {0x0f, 0x10, 0x10, 0x0e, 0x01, 0x01, 0x1e},
 	'T': {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04},
+	'U': {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e},
 	'V': {0x11, 0x11, 0x11, 0x11, 0x11, 0x0a, 0x04},
+	'W': {0x11, 0x11, 0x11, 0x15, 0x15, 0x1b, 0x11},
+	'X': {0x11, 0x11, 0x0a, 0x04, 0x0a, 0x11, 0x11},
 	'Y': {0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04},
+	'Z': {0x1f, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1f},
+	'J': {0x07, 0x02, 0x02, 0x02, 0x12, 0x12, 0x0c},
+	'Q': {0x0e, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0d},
+	'.': {0x00, 0x00, 0x00, 0x00, 0x00, 0x0c, 0x0c},
+	'(': {0x02, 0x04, 0x08, 0x08, 0x08, 0x04, 0x02},
+	')': {0x08, 0x04, 0x02, 0x02, 0x02, 0x04, 0x08},
 	'?': {0x0e, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04},
 }
 

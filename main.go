@@ -40,6 +40,11 @@ func main() {
 	mozaLEDProbe := flag.Bool("moza-led-probe", false, "light each rev-light segment one at a time to identify the rim's LED layout, then exit")
 	mozaLEDProbeHold := flag.Duration("moza-led-probe-hold", 600*time.Millisecond, "how long to hold each segment during -moza-led-probe")
 	mozaProtocol := flag.String("moza-protocol", "auto", "rim LED protocol for -moza-test/-moza-led-probe: \"auto\" (detect), \"old\" (legacy rims), or \"new\" (ESX and other newer rims)")
+	voiceSTT := flag.String("voice-stt", "", "transcribe a WAV file with the configured whisper.cpp, then parse + dry-run the pit plan, and exit")
+	voiceListen := flag.Bool("voice-listen", false, "record from the mic, transcribe, and dry-run the pit plan (no trigger, applies nothing), then exit")
+	voiceSay := flag.String("voice-say", "", "parse a phrase and print the pit-menu changes it would make against the live LMU menu (dry run), then exit")
+	voiceMenu := flag.Bool("voice-menu", false, "dump the live LMU pit menu (component names + option labels) for tuning the voice matching, then exit")
+	voiceDuration := flag.Duration("voice-duration", 4*time.Second, "recording duration for -voice-listen")
 	flag.Parse()
 
 	if *mozaTest {
@@ -85,6 +90,21 @@ func main() {
 		log.Printf("using defaults: listen=%s:%d print_hz=%.2f", cfg.ListenAddr, cfg.ListenPort, cfg.PrintHz)
 	} else {
 		log.Printf("loaded config %s: listen=%s:%d print_hz=%.2f", loadedPath, cfg.ListenAddr, cfg.ListenPort, cfg.PrintHz)
+	}
+
+	// Voice bring-up harness: headless, exercises one stage and exits. Applies
+	// nothing (the pit plan is a dry run) — see voicecli.go.
+	if *voiceMenu {
+		if err := dumpPitMenu(cfg); err != nil {
+			log.Fatalf("voice menu: %v", err)
+		}
+		return
+	}
+	if *voiceSTT != "" || *voiceListen || *voiceSay != "" {
+		if err := runVoiceTest(cfg, *voiceSTT, *voiceSay, *voiceListen, *voiceDuration); err != nil {
+			log.Fatalf("voice test: %v", err)
+		}
+		return
 	}
 
 	recorder, err := recording.NewManager(cfg.Recording.Dir)

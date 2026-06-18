@@ -61,6 +61,7 @@ export default function App() {
   const [replayMax, setReplayMax] = useState(5000);
   const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [overlayRunning, setOverlayRunning] = useState(false);
+  const [learningButton, setLearningButton] = useState(false);
   const [mozaStatus, setMozaStatus] = useState<any>({ enabled: false, connected: false, port: "", model: "", serial: "", rpm_leds: 0, wheel: "", protocol: "" });
   const [testingLights, setTestingLights] = useState(false);
   const [mozaDevices, setMozaDevices] = useState<any[]>([]);
@@ -303,6 +304,27 @@ export default function App() {
       setStatus("Saved");
     } catch (e) {
       setStatus(String(e), "error");
+    }
+  }
+
+  // learnVoiceButton listens for the next button/key press across input devices
+  // and stores it as the voice push-to-talk trigger (so the user can bind a
+  // wheel-rim button without knowing its evdev code).
+  async function learnVoiceButton() {
+    setLearningButton(true);
+    setStatus("Press the button you want to use for push-to-talk…");
+    try {
+      const btn: any = await Service.LearnVoiceButton(10);
+      patch((c) => {
+        c.voice.trigger = "button";
+        c.voice.button_device = btn.device;
+        c.voice.button_code = btn.code;
+      });
+      setStatus(`Captured ${btn.name || btn.device} (code ${btn.code}) — Apply/Save to use it`);
+    } catch (e) {
+      setStatus(String(e), "error");
+    } finally {
+      setLearningButton(false);
     }
   }
 
@@ -836,6 +858,51 @@ export default function App() {
                     <p className="hint">Lock-to-lock wheel rotation. Used for Forza; LMU reports its own per-car range, which takes over automatically.</p>
                     <label>Custom wheel image <input autoComplete="off" placeholder="/path/to/wheel.png (optional, square PNG)" value={o.steering_image_path ?? ""} onChange={(e) => patch((c) => (c.overlay.steering_image_path = e.target.value))} /></label>
                     <p className="hint">Apply restarts a running overlay so changes take effect immediately. Save to persist to config.json.</p>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const v = config.voice ?? {};
+                const trigger = v.trigger || "fifo";
+                return (
+                  <div className="panel" style={{ gridColumn: "1 / -1" }}>
+                    <h2>Voice control (LMU pit, push-to-talk)</h2>
+                    <label className="check"><input type="checkbox" checked={!!v.enabled} onChange={(e) => patch((c) => (c.voice.enabled = e.target.checked))} /> Enable offline voice commands</label>
+                    <p className="hint">Hold the push-to-talk trigger and speak a pit call (e.g. “fuel to 30, change all tyres, box this lap”). It is transcribed locally with whisper.cpp, then shown on the overlay for a few seconds — say “yes” to confirm before it is applied to LMU's pit menu. Linux only.</p>
+
+                    <h3 className="subhead">Speech-to-text (whisper.cpp)</h3>
+                    <label>Whisper binary <input autoComplete="off" placeholder="/path/to/whisper-cli" value={v.whisper_bin ?? ""} onChange={(e) => patch((c) => (c.voice.whisper_bin = e.target.value))} /></label>
+                    <label>Whisper model <input autoComplete="off" placeholder="/path/to/ggml-base.en.bin" value={v.whisper_model ?? ""} onChange={(e) => patch((c) => (c.voice.whisper_model = e.target.value))} /></label>
+                    <div className="grid2">
+                      <label>Language <input autoComplete="off" placeholder="en" value={v.language ?? ""} onChange={(e) => patch((c) => (c.voice.language = e.target.value))} /></label>
+                      <label>Confirm window (s) <input type="number" min={1} max={30} step={1} value={typeof v.confirm_seconds === "number" ? v.confirm_seconds : 6} onChange={(e) => patch((c) => (c.voice.confirm_seconds = Number(e.target.value)))} /></label>
+                    </div>
+                    <label>Recorder command <input autoComplete="off" placeholder="(default: arecord) e.g. parecord --file-format=wav {out}" value={v.capture_cmd ?? ""} onChange={(e) => patch((c) => (c.voice.capture_cmd = e.target.value))} /></label>
+                    <p className="hint">Optional override; “{"{out}"}” is the WAV path. Leave blank to use arecord (mono 16 kHz).</p>
+
+                    <h3 className="subhead">Push-to-talk trigger</h3>
+                    <label>Trigger
+                      <select value={trigger} onChange={(e) => patch((c) => (c.voice.trigger = e.target.value))}>
+                        <option value="fifo">External (FIFO / keybind)</option>
+                        <option value="button">Hardware button (evdev)</option>
+                      </select>
+                    </label>
+                    {trigger === "fifo" ? (
+                      <>
+                        <label>FIFO path <input autoComplete="off" placeholder="/tmp/telemetry-handler-ptt" value={v.fifo_path ?? ""} onChange={(e) => patch((c) => (c.voice.fifo_path = e.target.value))} /></label>
+                        <p className="hint">Bind a key to write “press” on key-down and “release” on key-up to this pipe. Hyprland example:<br /><code>bindp = , F8, exec, echo press &gt; {v.fifo_path || "/tmp/telemetry-handler-ptt"}</code><br /><code>bindrn = , F8, exec, echo release &gt; {v.fifo_path || "/tmp/telemetry-handler-ptt"}</code></p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid2">
+                          <label>Device <input autoComplete="off" placeholder="/dev/input/eventX" value={v.button_device ?? ""} onChange={(e) => patch((c) => (c.voice.button_device = e.target.value))} /></label>
+                          <label>Button code <input type="number" min={0} value={typeof v.button_code === "number" ? v.button_code : 0} onChange={(e) => patch((c) => (c.voice.button_code = Number(e.target.value)))} /></label>
+                        </div>
+                        <button type="button" onClick={learnVoiceButton} disabled={learningButton}>{learningButton ? "Press a button now…" : "Learn button"}</button>
+                        <p className="hint">Click “Learn button”, then press the wheel-rim button you want to use. Requires read access to /dev/input (input group or a udev rule).</p>
+                      </>
+                    )}
+                    <p className="hint">Apply restarts voice on the next launch; Save persists to config.json. Whisper/recorder changes take effect on restart.</p>
                   </div>
                 );
               })()}
