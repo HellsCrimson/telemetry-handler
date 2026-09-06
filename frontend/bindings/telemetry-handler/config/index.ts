@@ -4,6 +4,7 @@
 export {
     Config,
     CurvePoint,
+    Engineer,
     LMU,
     Moza,
     Overlay,

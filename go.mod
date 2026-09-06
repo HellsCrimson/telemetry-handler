@@ -3,6 +3,7 @@ module telemetry-handler
 go 1.26.3
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.98
 	modernc.org/sqlite v1.52.0
 )
@@ -13,7 +14,6 @@ require (
 	github.com/ProtonMail/go-crypto v1.3.0 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect

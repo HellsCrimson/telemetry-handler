@@ -1,0 +1,9 @@
+# Torch is installed separately in the Dockerfile from the CUDA 12.4 index (the
+# PyPI wheel would pull its own CUDA libraries and double the image size).
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+numpy<2.3
+faster-whisper==1.2.0
+kokoro==0.9.4
+misaki[en]==0.9.4
+soundfile==0.13.1

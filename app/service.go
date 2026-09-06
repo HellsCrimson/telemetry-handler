@@ -13,6 +13,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"telemetry-handler/analysis"
+	"telemetry-handler/assistant"
 	"telemetry-handler/config"
 	"telemetry-handler/engineer"
 	"telemetry-handler/game/forza"
@@ -43,6 +44,24 @@ const (
 	// wheel while it is enabled but not connected (e.g. powered on after the app
 	// started).
 	mozaReconnectEvery = 3 * time.Second
+
+	// voiceReconnectEvery is how often the voice supervisor retries starting the
+	// push-to-talk engine while its trigger device is unavailable (e.g. a wheel
+	// powered on after the app started, so its /dev/input node appears late).
+	voiceReconnectEvery = 3 * time.Second
+	// engineerPingTimeout bounds a check of the LLM endpoint. It is generous
+	// because the first request to an evicted model includes loading the weights
+	// — measured at ~44s for a 27B GGUF — and that wait is the whole reason to
+	// make it here instead of on the driver's first question.
+	engineerPingTimeout = 90 * time.Second
+	// engineerWarmEvery re-pings so the server does not evict the model during a
+	// quiet stint and hand the next question a cold load.
+	engineerWarmEvery = 4 * time.Minute
+	// calloutEvery is how often the unprompted-radio rules are evaluated. The
+	// rules themselves decide whether anything is worth saying.
+	calloutEvery = 5 * time.Second
+	// calloutTTL is how long a callout stays on the overlay banner.
+	calloutTTL = 6 * time.Second
 
 	// referenceReconcileEvery is how often the strategy supervisor loads the
 	// reference lap on a context change, persists a newly-beaten PB, and updates
@@ -153,23 +172,31 @@ func (s *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	return nil
 }
 
-// startVoice builds and runs the offline push-to-talk voice assistant: it records
-// on a PTT trigger, transcribes locally with whisper.cpp, parses pit commands,
-// stages them for confirmation on the overlay banner, and applies confirmed ones
-// to LMU's pit menu over the REST API. A construction failure (bad trigger, no
-// whisper binary) is logged and non-fatal — the rest of the app runs unchanged.
+// startVoice builds and runs the push-to-talk voice assistant: it records on a
+// PTT trigger, streams the audio to the GPU voice server for transcription,
+// parses pit commands, stages them for confirmation on the overlay banner, and
+// applies confirmed ones to LMU's pit menu over the REST API. A construction
+// failure (bad trigger, bad server URL) is logged and non-fatal — the rest of
+// the app runs unchanged.
 func (s *Service) startVoice(ctx context.Context, cfg config.Config) {
+	// The spoken-output speaker does not depend on the input device, so build it up
+	// front — it is usable (and testable) even while we wait for the wheel.
+	if cfg.Voice.TTS.Enabled {
+		s.applyVoiceTTS(ctx, cfg.Voice)
+	}
+	go s.superviseVoice(ctx, cfg)
+}
+
+// superviseVoice starts the push-to-talk engine, retrying until its trigger
+// device is available. A wheel powered on after the app starts (so its
+// /dev/input node does not exist yet) is then picked up automatically, instead of
+// leaving voice permanently disabled.
+func (s *Service) superviseVoice(ctx context.Context, cfg config.Config) {
 	// Voice needs the LMU REST client (pit menu read/write) even when periodic
 	// REST polling is off, so create one if the poller did not.
 	client := s.lmuClient
 	if client == nil {
 		client = rest.NewClient(cfg.LMU.BaseURL, lmuRESTTimeout)
-	}
-	// Spoken output: read the assistant's messages aloud, like a race engineer, by
-	// shelling out to a local TTS CLI (espeak-ng / kokoro-tts) and playing the WAV.
-	// Non-fatal — a bad command just means no readback.
-	if cfg.Voice.TTS.Enabled {
-		s.applyVoiceTTS(ctx, cfg.Voice.TTS)
 	}
 
 	// Surface every voice notice on the overlay banner and in the log, so the
@@ -180,29 +207,176 @@ func (s *Service) startVoice(ctx context.Context, cfg config.Config) {
 	notify := func(text string, level int, ttl time.Duration) {
 		log.Printf("voice: %s", text)
 		s.runtime.SetVoiceNotice(text, level, ttl)
+		// An engineer's answer was already spoken sentence by sentence as it
+		// streamed; saying the truncated banner version again would repeat it.
+		if level == voice.LevelAnswer {
+			return
+		}
 		sp := s.currentSpeaker()
 		if sp != nil && (level != voice.LevelInfo || s.runtime.Config().Voice.TTS.SpeakInfo) {
 			sp.Speak(spokenText(text))
 		}
 	}
-	engine, err := voice.Build(ctx, voiceConfig(cfg.Voice), client, notify, log.Printf)
-	if err != nil {
-		log.Printf("voice: disabled: %v", err)
-		s.runtime.SetVoiceNotice("VOICE ERROR", voice.LevelError, 6*time.Second)
+
+	// speak says one sentence as-is — engineer answers are already natural prose
+	// and must not go through the banner tidy-up.
+	speak := func(text string) {
+		if sp := s.currentSpeaker(); sp != nil {
+			sp.Speak(text)
+		}
+	}
+
+	// Pressing the trigger silences the assistant, so the driver can cut it off
+	// mid-sentence rather than talk over it.
+	bargeIn := func() {
+		if sp := s.currentSpeaker(); sp != nil {
+			sp.Stop()
+		}
+	}
+
+	interpreter := s.buildEngineer(cfg.Voice.Engineer, client)
+	// Callouts are rule-based and never consult the model, so they run whether or
+	// not the LLM half is configured.
+	go s.superviseCallouts(ctx, cfg.Voice.Engineer, notify, speak)
+
+	attempt := func() (bool, error) {
+		engine, err := voice.Build(ctx, voiceConfig(cfg.Voice), voice.Deps{
+			Controller:  client,
+			Notify:      notify,
+			Interpreter: interpreter,
+			Speak:       speak,
+			OnPress:     bargeIn,
+			Logf:        log.Printf,
+		})
+		if err != nil {
+			return false, err
+		}
+		log.Printf("voice: push-to-talk ready (trigger=%s)", voiceTriggerName(cfg.Voice))
+		go engine.Run(ctx)
+		return true, nil
+	}
+
+	if ok, err := attempt(); ok {
+		return
+	} else {
+		// Log why once (e.g. the wheel/device is not present yet, or a bad whisper
+		// path), then retry quietly until it succeeds.
+		log.Printf("voice: not ready (%v) — retrying every %s until the device is available", err, voiceReconnectEvery)
+	}
+
+	ticker := time.NewTicker(voiceReconnectEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if ok, _ := attempt(); ok {
+				return
+			}
+		}
+	}
+}
+
+// buildEngineer constructs the LLM race engineer, or returns nil (the engine
+// then uses the deterministic grammar alone). A misconfigured or unreachable
+// model is logged and non-fatal: voice commands keep working without it.
+func (s *Service) buildEngineer(cfg config.Engineer, garage assistant.Garage) voice.Interpreter {
+	if !cfg.Enabled {
+		return nil
+	}
+	llm := assistant.NewLLM(assistant.LLMConfig{
+		BaseURL:     cfg.BaseURL,
+		APIKey:      cfg.APIKeyValue(),
+		Model:       cfg.Model,
+		Timeout:     time.Duration(cfg.TimeoutSeconds * float64(time.Second)),
+		MaxTokens:   cfg.MaxTokens,
+		Temperature: cfg.Temperature,
+	})
+	// Check it up front so a bad key or model id shows in the log at startup
+	// rather than on the first corner, then keep it warm.
+	go s.superviseEngineerWarmth(llm, cfg)
+	in := assistant.NewInterpreter(llm, s.runtime.EngineerState, log.Printf)
+	// The garage tools read and write the car setup over LMU's REST API. The
+	// caller passes the client it resolved, which exists even when periodic REST
+	// polling is switched off.
+	if garage != nil {
+		in.Tools().Add(assistant.GetSetupTool(garage))
+		in.Tools().Add(assistant.SetSetupTool(garage, s.runtime.EngineerState))
+	}
+	return in
+}
+
+// superviseEngineerWarmth pings the model at startup and periodically after.
+//
+// The ping is the warm-up: a server that has evicted the weights spends tens of
+// seconds loading them on the next request, and that delay landing on a question
+// asked mid-corner is indistinguishable from the engineer being broken.
+func (s *Service) superviseEngineerWarmth(llm *assistant.LLM, cfg config.Engineer) {
+	ping := func(first bool) {
+		ctx, cancel := context.WithTimeout(s.requestContext(), engineerPingTimeout)
+		defer cancel()
+		started := time.Now()
+		if err := llm.Ping(ctx); err != nil {
+			log.Printf("engineer: %v (voice commands still work; answers fall back to the grammar)", err)
+			return
+		}
+		if first {
+			log.Printf("engineer: ready (%s at %s, warmed in %s)",
+				cfg.Model, cfg.BaseURL, time.Since(started).Round(time.Millisecond))
+		}
+	}
+	ping(true)
+
+	ticker := time.NewTicker(engineerWarmEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.requestContext().Done():
+			return
+		case <-ticker.C:
+			ping(false)
+		}
+	}
+}
+
+// superviseCallouts runs the unprompted radio: it samples the session on a timer
+// and speaks anything the rule set thinks the driver should know. Rate limiting
+// lives in the Callouts type, not here.
+func (s *Service) superviseCallouts(ctx context.Context, cfg config.Engineer, notify voice.Notifier, speak func(string)) {
+	if !cfg.Callouts {
+		log.Printf("voice: callouts off (set voice.engineer.callouts=true to hear lap summaries, flags and fuel warnings)")
 		return
 	}
-	log.Printf("voice: push-to-talk ready (trigger=%s)", voiceTriggerName(cfg.Voice))
-	go engine.Run(ctx)
+	log.Printf("voice: callouts on — lap summaries, flags, fuel, tyres, rivals pitting")
+	calls := assistant.NewCallouts()
+	ticker := time.NewTicker(calloutEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			// notify logs it and puts it on the overlay banner; LevelAnswer means it
+			// does not also speak, which speak below does.
+			for _, msg := range calls.Observe(s.runtime.EngineerState(), now) {
+				notify(msg, voice.LevelAnswer, calloutTTL)
+				speak(msg)
+			}
+		}
+	}
 }
 
 // applyVoiceTTS (re)builds the spoken-output speaker from the TTS config, or
 // clears it when TTS is disabled. Safe to call at startup and from ApplyConfig.
-func (s *Service) applyVoiceTTS(ctx context.Context, t config.VoiceTTS) {
-	if !t.Enabled {
+// The speaker dials the voice server lazily, so this succeeds even when the
+// server is still booting.
+func (s *Service) applyVoiceTTS(ctx context.Context, cfg config.Voice) {
+	if !cfg.TTS.Enabled {
 		s.setSpeaker(nil)
 		return
 	}
-	sp, err := voice.NewSpeaker(ctx, voiceTTSConfig(t), log.Printf)
+	sp, err := voice.NewSpeaker(ctx, voiceTTSConfig(cfg), log.Printf)
 	if err != nil {
 		log.Printf("voice: tts disabled: %v", err)
 		s.setSpeaker(nil)
@@ -227,8 +401,7 @@ func (s *Service) currentSpeaker() voice.Speaker {
 func voiceConfig(v config.Voice) voice.Config {
 	ttl := time.Duration(v.ConfirmSeconds * float64(time.Second))
 	return voice.Config{
-		WhisperBin:   v.WhisperBin,
-		WhisperModel: v.WhisperModel,
+		Remote:       voiceRemote(v),
 		Language:     v.Language,
 		CaptureCmd:   v.CaptureCmd,
 		Trigger:      v.Trigger,
@@ -246,12 +419,19 @@ func voiceTriggerName(v config.Voice) string {
 	return "fifo"
 }
 
-// voiceTTSConfig maps the persisted config.VoiceTTS onto the voice package's
+// voiceRemote maps the persisted server settings onto the voice client's.
+func voiceRemote(v config.Voice) voice.RemoteConfig {
+	return voice.RemoteConfig{BaseURL: v.ServerURL, Token: v.ServerToken}
+}
+
+// voiceTTSConfig maps the persisted voice config onto the voice package's
 // TTSConfig.
-func voiceTTSConfig(t config.VoiceTTS) voice.TTSConfig {
+func voiceTTSConfig(v config.Voice) voice.TTSConfig {
 	return voice.TTSConfig{
-		Cmd:       t.Cmd,
-		PlayerCmd: t.PlayerCmd,
+		Remote:    voiceRemote(v),
+		Voice:     v.TTS.Voice,
+		Speed:     v.TTS.Speed,
+		PlayerCmd: v.TTS.PlayerCmd,
 	}
 }
 
@@ -679,14 +859,26 @@ func (s *Service) LearnVoiceButton(timeoutSeconds int) (voice.Button, error) {
 	return voice.LearnButton(ctx)
 }
 
+// VoiceTestResult reports how long the test phrase took to become audible.
+// FirstAudioMS is the latency figure; TotalMS also includes speaking the phrase.
+type VoiceTestResult struct {
+	FirstAudioMS int64 `json:"first_audio_ms"`
+	TotalMS      int64 `json:"total_ms"`
+}
+
 // TestVoiceTTS synthesizes and plays a sample phrase synchronously using the
-// given TTS settings, so the dashboard can verify spoken output without enabling
-// voice or restarting. Returns an error (surfaced in the UI) if synthesis or
-// playback fails.
-func (s *Service) TestVoiceTTS(t config.VoiceTTS) error {
+// given voice settings, so the dashboard can verify the voice server without
+// enabling voice or restarting. Returns an error (surfaced in the UI) if the
+// server is unreachable or playback fails.
+func (s *Service) TestVoiceTTS(v config.Voice) (VoiceTestResult, error) {
+	const sample = "Confirm, all tyres new wet, say yes."
 	ctx, cancel := context.WithTimeout(s.requestContext(), 30*time.Second)
 	defer cancel()
-	return voice.SpeakOnce(ctx, voiceTTSConfig(t), "Confirm, all tyres new wet, say yes.", log.Printf)
+	t, err := voice.SpeakOnce(ctx, voiceTTSConfig(v), sample)
+	return VoiceTestResult{
+		FirstAudioMS: t.FirstAudio.Milliseconds(),
+		TotalMS:      t.Total.Milliseconds(),
+	}, err
 }
 
 // requestContext returns the service context for a bound call, falling back to
@@ -715,11 +907,11 @@ func (s *Service) ApplyConfig(cfg config.Config) (config.Config, error) {
 		s.overlay.Stop()
 		s.reconcileOverlay(s.ctx)
 	}
-	// Rebuild the spoken-output speaker so TTS edits (command, voice) take effect
-	// without a restart — the rest of the voice engine (trigger/whisper) still
-	// needs one. Only when voice itself is running (ctx set).
+	// Rebuild the spoken-output speaker so TTS edits (server, voice, speed) take
+	// effect without a restart — the rest of the voice engine (trigger, recorder)
+	// still needs one. Only when voice itself is running (ctx set).
 	if s.ctx != nil {
-		s.applyVoiceTTS(s.ctx, cfg.Voice.TTS)
+		s.applyVoiceTTS(s.ctx, cfg.Voice)
 	}
 	return s.runtime.Config(), nil
 }

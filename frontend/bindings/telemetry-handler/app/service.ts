@@ -319,12 +319,14 @@ export function TestMozaLights(): $CancellablePromise<void> {
 
 /**
  * TestVoiceTTS synthesizes and plays a sample phrase synchronously using the
- * given TTS settings, so the dashboard can verify spoken output without enabling
- * voice or restarting. Returns an error (surfaced in the UI) if synthesis or
- * playback fails.
+ * given voice settings, so the dashboard can verify the voice server without
+ * enabling voice or restarting. Returns an error (surfaced in the UI) if the
+ * server is unreachable or playback fails.
  */
-export function TestVoiceTTS(t: config$0.VoiceTTS): $CancellablePromise<void> {
-    return $Call.ByID(2174446089, t);
+export function TestVoiceTTS(v: config$0.Voice): $CancellablePromise<$models.VoiceTestResult> {
+    return $Call.ByID(2174446089, v).then(($result: any) => {
+        return $$createType31($result);
+    });
 }
 
 // Private type creation functions
@@ -359,3 +361,4 @@ const $$createType27 = store$0.SessionRow.createFrom;
 const $$createType28 = $Create.Array($$createType27);
 const $$createType29 = $models.ReplaySample.createFrom;
 const $$createType30 = $Create.Array($$createType29);
+const $$createType31 = $models.VoiceTestResult.createFrom;

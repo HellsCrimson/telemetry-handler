@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
+	"telemetry-handler/assistant"
 	"telemetry-handler/config"
 	"telemetry-handler/game/lmu/rest"
 	"telemetry-handler/voice"
@@ -15,33 +17,25 @@ import (
 // pit change — Resolve is a read-only dry run that just prints the pit-menu
 // writes a phrase would make. The stages:
 //
-//   -voice-stt FILE   transcribe a WAV with the configured whisper.cpp, then
-//                     parse + dry-run resolve the result.
-//   -voice-listen     record from the mic for -voice-duration, then the same.
-//   -voice-say TEXT   skip audio entirely and parse + dry-run resolve TEXT.
+//	-voice-listen     record from the mic for -voice-duration, stream it to the
+//	                  voice server, then parse + dry-run resolve the transcript.
+//	-voice-say TEXT   skip audio entirely and parse + dry-run resolve TEXT.
+//	-voice-speak TEXT synthesize TEXT on the voice server and play it, to check
+//	                  the spoken-output half on its own.
 //
 // The dry-run resolve needs LMU running in a session (the pit-menu REST endpoint
 // is state-gated); when it is not reachable the parse is still printed and the
 // menu read error is reported, so STT can be validated without the game.
-func runVoiceTest(cfg config.Config, sttFile, sayText string, listen bool, dur time.Duration) error {
+func runVoiceTest(cfg config.Config, sayText string, listen bool, dur time.Duration) error {
 	ctx := context.Background()
 
-	var text string
-	switch {
-	case sttFile != "":
-		t, err := transcribe(ctx, cfg, sttFile)
-		if err != nil {
-			return err
-		}
-		text = t
-	case listen:
+	text := sayText
+	if listen {
 		t, err := recordAndTranscribe(ctx, cfg, dur)
 		if err != nil {
 			return err
 		}
 		text = t
-	default:
-		text = sayText
 	}
 
 	fmt.Printf("heard: %q\n", text)
@@ -49,32 +43,98 @@ func runVoiceTest(cfg config.Config, sttFile, sayText string, listen bool, dur t
 	return nil
 }
 
-// transcribe runs whisper.cpp on a WAV file using the configured binary/model.
-func transcribe(ctx context.Context, cfg config.Config, wav string) (string, error) {
-	tr := voice.WhisperTranscriber{
-		Bin:   cfg.Voice.WhisperBin,
-		Model: cfg.Voice.WhisperModel,
-		Lang:  cfg.Voice.Language,
-	}
-	return tr.Transcribe(ctx, wav)
-}
-
-// recordAndTranscribe records from the mic for dur (using the configured
-// recorder), then transcribes it — the full input chain minus the PTT trigger.
+// recordAndTranscribe records from the mic for dur and streams it to the voice
+// server — the full input chain minus the push-to-talk trigger.
 func recordAndTranscribe(ctx context.Context, cfg config.Config, dur time.Duration) (string, error) {
-	cap := voice.ExecCapturer{CmdTemplate: cfg.Voice.CaptureCmd}
+	listener, err := voice.NewRemoteListener(voiceRemoteConfig(cfg), cfg.Voice.CaptureCmd, cfg.Voice.Language, log.Printf)
+	if err != nil {
+		return "", err
+	}
 	stop := make(chan struct{})
 	go func() {
 		time.Sleep(dur)
 		close(stop)
 	}()
 	fmt.Printf("recording for %s — speak now…\n", dur)
-	wav, err := cap.Capture(ctx, stop)
+	started := time.Now()
+	text, err := listener.Listen(ctx, stop)
 	if err != nil {
 		return "", err
 	}
-	defer cap.Cleanup(wav)
-	return transcribe(ctx, cfg, wav)
+	fmt.Printf("(transcribed %s after the release)\n", time.Since(started)-dur)
+	return text, nil
+}
+
+// runVoiceSpeak synthesizes a phrase on the voice server and plays it, so the
+// spoken-output path can be checked without the mic or the game.
+func runVoiceSpeak(cfg config.Config, text string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	timing, err := voice.SpeakOnce(ctx, voice.TTSConfig{
+		Remote:    voiceRemoteConfig(cfg),
+		Voice:     cfg.Voice.TTS.Voice,
+		Speed:     cfg.Voice.TTS.Speed,
+		PlayerCmd: cfg.Voice.TTS.PlayerCmd,
+	}, text)
+	if err != nil {
+		return err
+	}
+	// Only the first figure is latency; the second is dominated by how long the
+	// phrase takes to say, so it grows with the message and is not comparable.
+	fmt.Printf("audio started in %s (finished speaking after %s)\n",
+		timing.FirstAudio.Round(time.Millisecond), timing.Total.Round(time.Millisecond))
+	return nil
+}
+
+// runEngineerAsk puts one question to the LLM race engineer with the live
+// session as context and prints (and speaks) the answer — the bring-up path for
+// the engineer, usable without the push-to-talk trigger.
+func runEngineerAsk(cfg config.Config, question string) error {
+	if !cfg.Voice.Engineer.Enabled {
+		return fmt.Errorf("voice.engineer.enabled is false — turn it on in config.json or the dashboard")
+	}
+	e := cfg.Voice.Engineer
+	llm := assistant.NewLLM(assistant.LLMConfig{
+		BaseURL:     e.BaseURL,
+		APIKey:      e.APIKeyValue(),
+		Model:       e.Model,
+		Timeout:     time.Duration(e.TimeoutSeconds * float64(time.Second)),
+		MaxTokens:   e.MaxTokens,
+		Temperature: e.Temperature,
+	})
+	if e.APIKeyValue() == "" {
+		fmt.Printf("warning: no API key (set %s or voice.engineer.api_key)\n", config.EngineerAPIKeyEnv)
+	}
+
+	// A dry run has no live telemetry, so the briefing is empty unless the app is
+	// also running — the point here is to exercise the endpoint and the prompt.
+	in := assistant.NewInterpreter(llm, nil, log.Printf)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	started := time.Now()
+	var first time.Duration
+	reply, err := in.Interpret(ctx, question, func(sentence string) {
+		if first == 0 {
+			first = time.Since(started)
+		}
+		fmt.Printf("  %s\n", sentence)
+	})
+	if err != nil {
+		return err
+	}
+	if len(reply.Actions) > 0 {
+		fmt.Printf("engineer staged %d pit action(s) — dry run, nothing applied\n", len(reply.Actions))
+		dryRunPlan(ctx, cfg, question)
+		return nil
+	}
+	fmt.Printf("(first sentence in %s, full answer in %s)\n",
+		first.Round(time.Millisecond), time.Since(started).Round(time.Millisecond))
+	return nil
+}
+
+func voiceRemoteConfig(cfg config.Config) voice.RemoteConfig {
+	return voice.RemoteConfig{BaseURL: cfg.Voice.ServerURL, Token: cfg.Voice.ServerToken}
 }
 
 // dumpPitMenu prints the live LMU pit menu — every component's name, PMC value,

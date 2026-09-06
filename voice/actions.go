@@ -16,6 +16,10 @@ import (
 type Controller interface {
 	PitMenu(ctx context.Context) ([]rest.PitMenuItem, error)
 	SetPitMenuValue(ctx context.Context, pmc, setting int) error
+	// SetSetupValue writes one garage setup field. LMU only accepts these in the
+	// garage; on track it refuses them, so callers gate on that themselves rather
+	// than staging a change that will silently do nothing.
+	SetSetupValue(ctx context.Context, key string, value int) error
 }
 
 // PitWrite is one resolved pit-menu change: select option Setting on component PMC.
@@ -32,7 +36,20 @@ type PitWrite struct {
 // when nothing in the utterance mapped to an available pit-menu component.
 type Plan struct {
 	Writes []PitWrite
-	Desc   string
+	// Setup holds garage setup writes. They live alongside the pit-menu writes so
+	// that both go through the same single confirmation — the driver says "yes"
+	// once, to everything that was read back to them.
+	Setup []SetupWrite
+	Desc  string
+}
+
+// SetupWrite is one garage setup field to change. Key is the game's own setup
+// key; Name and Label are the human forms used in the confirmation prompt.
+type SetupWrite struct {
+	Key   string
+	Value int
+	Name  string
+	Label string
 }
 
 // Important reports whether the plan needs confirmation (any pit change does).
@@ -416,8 +433,16 @@ func (p Plan) Apply(ctx context.Context, c Controller) error {
 			return fmt.Errorf("set %s: %w", w.Name, err)
 		}
 	}
+	for _, w := range p.Setup {
+		if err := c.SetSetupValue(ctx, w.Key, w.Value); err != nil {
+			return fmt.Errorf("set %s: %w", w.Name, err)
+		}
+	}
 	return nil
 }
+
+// Empty reports whether the plan would change nothing.
+func (p Plan) Empty() bool { return len(p.Writes) == 0 && len(p.Setup) == 0 }
 
 // --- component finders ---
 

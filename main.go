@@ -40,8 +40,9 @@ func main() {
 	mozaLEDProbe := flag.Bool("moza-led-probe", false, "light each rev-light segment one at a time to identify the rim's LED layout, then exit")
 	mozaLEDProbeHold := flag.Duration("moza-led-probe-hold", 600*time.Millisecond, "how long to hold each segment during -moza-led-probe")
 	mozaProtocol := flag.String("moza-protocol", "auto", "rim LED protocol for -moza-test/-moza-led-probe: \"auto\" (detect), \"old\" (legacy rims), or \"new\" (ESX and other newer rims)")
-	voiceSTT := flag.String("voice-stt", "", "transcribe a WAV file with the configured whisper.cpp, then parse + dry-run the pit plan, and exit")
-	voiceListen := flag.Bool("voice-listen", false, "record from the mic, transcribe, and dry-run the pit plan (no trigger, applies nothing), then exit")
+	voiceListen := flag.Bool("voice-listen", false, "record from the mic, transcribe on the voice server, and dry-run the pit plan (no trigger, applies nothing), then exit")
+	voiceSpeak := flag.String("voice-speak", "", "synthesize a phrase on the voice server and play it, then exit")
+	voiceAsk := flag.String("voice-ask", "", "put a question to the LLM race engineer and print the answer, then exit")
 	voiceSay := flag.String("voice-say", "", "parse a phrase and print the pit-menu changes it would make against the live LMU menu (dry run), then exit")
 	voiceMenu := flag.Bool("voice-menu", false, "dump the live LMU pit menu (component names + option labels) for tuning the voice matching, then exit")
 	voiceDuration := flag.Duration("voice-duration", 4*time.Second, "recording duration for -voice-listen")
@@ -100,8 +101,20 @@ func main() {
 		}
 		return
 	}
-	if *voiceSTT != "" || *voiceListen || *voiceSay != "" {
-		if err := runVoiceTest(cfg, *voiceSTT, *voiceSay, *voiceListen, *voiceDuration); err != nil {
+	if *voiceAsk != "" {
+		if err := runEngineerAsk(cfg, *voiceAsk); err != nil {
+			log.Fatalf("engineer: %v", err)
+		}
+		return
+	}
+	if *voiceSpeak != "" {
+		if err := runVoiceSpeak(cfg, *voiceSpeak); err != nil {
+			log.Fatalf("voice speak: %v", err)
+		}
+		return
+	}
+	if *voiceListen || *voiceSay != "" {
+		if err := runVoiceTest(cfg, *voiceSay, *voiceListen, *voiceDuration); err != nil {
 			log.Fatalf("voice test: %v", err)
 		}
 		return

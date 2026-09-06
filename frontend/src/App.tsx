@@ -331,8 +331,9 @@ export default function App() {
   async function testVoiceTTS() {
     setStatus("Speaking test phrase…");
     try {
-      await Service.TestVoiceTTS(config.voice.tts);
-      setStatus("TTS test played");
+      const t: any = await Service.TestVoiceTTS(config.voice);
+      // Only the first figure is latency; the total is mostly the phrase itself.
+      setStatus(`TTS test played — audio started in ${t?.first_audio_ms ?? "?"} ms`);
     } catch (e) {
       setStatus(String(e), "error");
     }
@@ -877,18 +878,19 @@ export default function App() {
                 return (
                   <div className="panel" style={{ gridColumn: "1 / -1" }}>
                     <h2>Voice control (LMU pit, push-to-talk)</h2>
-                    <label className="check"><input type="checkbox" checked={!!v.enabled} onChange={(e) => patch((c) => (c.voice.enabled = e.target.checked))} /> Enable offline voice commands</label>
-                    <p className="hint">Hold the push-to-talk trigger and speak a pit call (e.g. “fuel to 30, change all tyres, box this lap”). It is transcribed locally with whisper.cpp, then shown on the overlay for a few seconds — say “yes” to confirm before it is applied to LMU's pit menu. Works on Linux and Windows (the FIFO trigger is Linux-only; use the button trigger on Windows).</p>
+                    <label className="check"><input type="checkbox" checked={!!v.enabled} onChange={(e) => patch((c) => (c.voice.enabled = e.target.checked))} /> Enable voice commands</label>
+                    <p className="hint">Hold the push-to-talk trigger and speak a pit call (e.g. “fuel to 30, change all tyres, box this lap”). The audio streams to the voice server while you hold the trigger, so the transcript is back almost as soon as you let go; it is then shown on the overlay for a few seconds — say “yes” to confirm before it is applied to LMU's pit menu. Linux only.</p>
 
-                    <h3 className="subhead">Speech-to-text (whisper.cpp)</h3>
-                    <label>Whisper binary <input autoComplete="off" placeholder="/path/to/whisper-cli" value={v.whisper_bin ?? ""} onChange={(e) => patch((c) => (c.voice.whisper_bin = e.target.value))} /></label>
-                    <label>Whisper model <input autoComplete="off" placeholder="/path/to/ggml-base.en.bin" value={v.whisper_model ?? ""} onChange={(e) => patch((c) => (c.voice.whisper_model = e.target.value))} /></label>
+                    <h3 className="subhead">Voice server (GPU)</h3>
+                    <label>Server URL <input autoComplete="off" placeholder="http://127.0.0.1:4400" value={v.server_url ?? ""} onChange={(e) => patch((c) => (c.voice.server_url = e.target.value))} /></label>
+                    <p className="hint">Runs speech-to-text and text-to-speech on the GPU box — see <code>deploy/voice-server/</code>. There is no local fallback: if it is unreachable the overlay shows “VOICE SERVER OFFLINE”.</p>
                     <div className="grid2">
+                      <label>Shared secret <input autoComplete="off" type="password" placeholder="(optional)" value={v.server_token ?? ""} onChange={(e) => patch((c) => (c.voice.server_token = e.target.value))} /></label>
                       <label>Language <input autoComplete="off" placeholder="en" value={v.language ?? ""} onChange={(e) => patch((c) => (c.voice.language = e.target.value))} /></label>
-                      <label>Confirm window (s) <input type="number" min={1} max={30} step={1} value={typeof v.confirm_seconds === "number" ? v.confirm_seconds : 6} onChange={(e) => patch((c) => (c.voice.confirm_seconds = Number(e.target.value)))} /></label>
                     </div>
-                    <label>Recorder command <input autoComplete="off" placeholder="(default: arecord) e.g. parecord --file-format=wav {out}" value={v.capture_cmd ?? ""} onChange={(e) => patch((c) => (c.voice.capture_cmd = e.target.value))} /></label>
-                    <p className="hint">Optional override; “{"{out}"}” is the WAV path. Leave blank to use arecord (mono 16 kHz).</p>
+                    <label>Confirm window (s) <input type="number" min={1} max={30} step={1} value={typeof v.confirm_seconds === "number" ? v.confirm_seconds : 6} onChange={(e) => patch((c) => (c.voice.confirm_seconds = Number(e.target.value)))} /></label>
+                    <label>Recorder command <input autoComplete="off" placeholder="(default: parecord) e.g. parecord --raw --format=s16le --rate=16000 --channels=1 --device=…" value={v.capture_cmd ?? ""} onChange={(e) => patch((c) => (c.voice.capture_cmd = e.target.value))} /></label>
+                    <p className="hint">Optional override; it must write raw s16le mono 16 kHz PCM to stdout. Leave blank to use parecord on the default input.</p>
 
                     <h3 className="subhead">Push-to-talk trigger</h3>
                     <label>Trigger
@@ -918,16 +920,41 @@ export default function App() {
                       return (
                         <>
                           <label className="check"><input type="checkbox" checked={!!tts.enabled} onChange={(e) => patch((c) => (c.voice.tts.enabled = e.target.checked))} /> Read confirmations &amp; results aloud</label>
-                          <label>Synth command <input autoComplete="off" placeholder="espeak-ng -w {out}" value={tts.cmd ?? ""} onChange={(e) => patch((c) => (c.voice.tts.cmd = e.target.value))} /></label>
-                          <p className="hint">A local TTS CLI that writes a WAV. “{"{out}"}” is the WAV path; “{"{txt}"}”, if present, is a temp file with the text (else text is sent on stdin). Examples:<br /><code>espeak-ng -w {"{out}"}</code> (robotic, zero-setup)<br /><code>kokoro-tts {"{txt}"} {"{out}"} --voice af_sarah --model /path/kokoro-v1.0.onnx --voices /path/voices-v1.0.bin</code></p>
-                          <label>Player override <input autoComplete="off" placeholder="(default: paplay) {out}" value={tts.player_cmd ?? ""} onChange={(e) => patch((c) => (c.voice.tts.player_cmd = e.target.value))} /></label>
+                          <p className="hint">Synthesized by Kokoro on the same voice server and streamed back as it is generated, so speech starts on the first chunk.</p>
+                          <div className="grid2">
+                            <label>Voice <input autoComplete="off" placeholder="af_sarah" value={tts.voice ?? ""} onChange={(e) => patch((c) => (c.voice.tts.voice = e.target.value))} /></label>
+                            <label>Speed <input type="number" min={0.5} max={2} step={0.05} value={typeof tts.speed === "number" && tts.speed > 0 ? tts.speed : 1} onChange={(e) => patch((c) => (c.voice.tts.speed = Number(e.target.value)))} /></label>
+                          </div>
+                          <label>Player override <input autoComplete="off" placeholder="(default: pacat) … --rate={rate} --channels={channels}" value={tts.player_cmd ?? ""} onChange={(e) => patch((c) => (c.voice.tts.player_cmd = e.target.value))} /></label>
+                          <p className="hint">Optional; it must read raw PCM from stdin. “{"{rate}"}” and “{"{channels}"}” are filled in from the stream.</p>
                           <label className="check"><input type="checkbox" checked={!!tts.speak_info} onChange={(e) => patch((c) => (c.voice.tts.speak_info = e.target.checked))} /> Also read the transcript echo aloud</label>
                           <button type="button" onClick={testVoiceTTS}>Test voice</button>
                         </>
                       );
                     })()}
 
-                    <p className="hint">Apply restarts voice on the next launch; Save persists to config.json. Whisper/recorder/TTS changes take effect on restart.</p>
+                    <h3 className="subhead">Race engineer (LLM)</h3>
+                    {(() => {
+                      const eng = v.engineer ?? {};
+                      return (
+                        <>
+                          <label className="check"><input type="checkbox" checked={!!eng.enabled} onChange={(e) => patch((c) => (c.voice.engineer.enabled = e.target.checked))} /> Answer questions and take free-form pit calls</label>
+                          <p className="hint">Sends what you say to a local LLM along with the live session (position, gaps, fuel, tyres, flags). It answers over the radio, and any change it proposes still has to be confirmed with “yes” before it reaches the car. If the model is unreachable, the deterministic grammar still handles pit commands.</p>
+                          <label>Endpoint <input autoComplete="off" placeholder="http://127.0.0.1:4399/v1" value={eng.base_url ?? ""} onChange={(e) => patch((c) => (c.voice.engineer.base_url = e.target.value))} /></label>
+                          <label>Model <input autoComplete="off" placeholder="qwen3-8b" value={eng.model ?? ""} onChange={(e) => patch((c) => (c.voice.engineer.model = e.target.value))} /></label>
+                          <label>API key <input autoComplete="off" type="password" placeholder="(prefer the TELEMETRY_ENGINEER_API_KEY env var)" value={eng.api_key ?? ""} onChange={(e) => patch((c) => (c.voice.engineer.api_key = e.target.value))} /></label>
+                          <p className="hint">The environment variable <code>TELEMETRY_ENGINEER_API_KEY</code> overrides this field. Prefer it — a key saved here is written to config.json in plain text.</p>
+                          <div className="grid2">
+                            <label>Reply limit (tokens) <input type="number" min={40} max={600} step={10} value={typeof eng.max_tokens === "number" && eng.max_tokens > 0 ? eng.max_tokens : 160} onChange={(e) => patch((c) => (c.voice.engineer.max_tokens = Number(e.target.value)))} /></label>
+                            <label>Timeout (s) <input type="number" min={2} max={60} step={1} value={typeof eng.timeout_seconds === "number" && eng.timeout_seconds > 0 ? eng.timeout_seconds : 20} onChange={(e) => patch((c) => (c.voice.engineer.timeout_seconds = Number(e.target.value)))} /></label>
+                          </div>
+                          <label className="check"><input type="checkbox" checked={!!eng.callouts} onChange={(e) => patch((c) => (c.voice.engineer.callouts = e.target.checked))} /> Unprompted callouts (flags, fuel, tyres, rivals pitting, traffic)</label>
+                          <p className="hint">Rule-based, not model-generated — instant and never invented. Spaced out so it stays radio-like rather than constant chatter.</p>
+                        </>
+                      );
+                    })()}
+
+                    <p className="hint">Apply restarts voice on the next launch; Save persists to config.json. Spoken-output settings take effect on Apply; the server URL, recorder and trigger need a restart.</p>
                   </div>
                 );
               })()}

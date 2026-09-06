@@ -342,6 +342,35 @@ export class TelemetrySnapshot {
     }
 }
 
+/**
+ * VoiceTestResult reports how long the test phrase took to become audible.
+ * FirstAudioMS is the latency figure; TotalMS also includes speaking the phrase.
+ */
+export class VoiceTestResult {
+    "first_audio_ms": number;
+    "total_ms": number;
+
+    /** Creates a new VoiceTestResult instance. */
+    constructor($$source: Partial<VoiceTestResult> = {}) {
+        if (!("first_audio_ms" in $$source)) {
+            this["first_audio_ms"] = 0;
+        }
+        if (!("total_ms" in $$source)) {
+            this["total_ms"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new VoiceTestResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): VoiceTestResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new VoiceTestResult($$parsedSource as Partial<VoiceTestResult>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = forza$0.Telemetry.createFrom;
 const $$createType1 = TelemetryMeta.createFrom;

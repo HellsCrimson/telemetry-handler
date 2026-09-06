@@ -114,6 +114,71 @@ export class CurvePoint {
 }
 
 /**
+ * Engineer configures the LLM race engineer. The endpoint is any
+ * OpenAI-compatible chat API (Unsloth Studio, vLLM, llama.cpp).
+ */
+export class Engineer {
+    "enabled": boolean;
+
+    /**
+     * BaseURL is the API root, with or without the /v1 suffix.
+     */
+    "base_url": string;
+
+    /**
+     * APIKey authenticates to the endpoint. Prefer the TELEMETRY_ENGINEER_API_KEY
+     * environment variable, which overrides this — a key in config.json is easy
+     * to leak when sharing the file.
+     */
+    "api_key"?: string;
+    "model": string;
+
+    /**
+     * TimeoutSeconds bounds one answer. Kept short: an engineer that replies
+     * after the corner is worse than one that says nothing.
+     */
+    "timeout_seconds"?: number;
+
+    /**
+     * MaxTokens caps the reply length, which is what keeps answers radio-brief.
+     */
+    "max_tokens"?: number;
+    "temperature"?: number;
+
+    /**
+     * Callouts enables unprompted radio (flags, fuel, rivals pitting, traffic).
+     * These are rule-based, not model-generated.
+     */
+    "callouts": boolean;
+
+    /** Creates a new Engineer instance. */
+    constructor($$source: Partial<Engineer> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("base_url" in $$source)) {
+            this["base_url"] = "";
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+        if (!("callouts" in $$source)) {
+            this["callouts"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Engineer instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Engineer {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Engineer($$parsedSource as Partial<Engineer>);
+    }
+}
+
+/**
  * LMU configures polling of Le Mans Ultimate's local REST API (port 6397), which
  * exposes strategy/weather-forecast/pit data the rF2 shared memory does not. The
  * API is reachable from the host directly, so no sidecar is involved. When
@@ -332,25 +397,33 @@ export class Terminal {
 }
 
 /**
- * Voice configures the offline push-to-talk voice-command MVP (whisper.cpp STT +
- * a deterministic grammar driving LMU's pit menu over its REST API). It is
- * Linux-only for now and disabled by default. The trigger is either an external
- * FIFO that something writes "press"/"release" to (a Hyprland keybind, a wheel-
- * button script) or a configured evdev button read directly from /dev/input.
+ * Voice configures the push-to-talk voice-command assistant (streaming STT +
+ * TTS on the GPU voice server, driving LMU's pit menu through its REST API with
+ * a deterministic grammar). Linux-only, disabled by default. The trigger is
+ * either an external FIFO that something writes "press"/"release" to (a Hyprland
+ * keybind, a wheel-button script) or a configured evdev button read directly
+ * from /dev/input.
  */
 export class Voice {
     "enabled": boolean;
 
     /**
-     * WhisperBin/WhisperModel point at a local whisper.cpp build and ggml model.
+     * ServerURL is the voice server (deploy/voice-server/), e.g.
+     * "http://127.0.0.1:4400". Both speech-to-text and text-to-speech run
+     * there; there is no local fallback.
      */
-    "whisper_bin": string;
-    "whisper_model": string;
+    "server_url": string;
+
+    /**
+     * ServerToken is the optional shared secret (VOICE_TOKEN on the server).
+     */
+    "server_token"?: string;
     "language"?: string;
 
     /**
-     * CaptureCmd optionally overrides the recorder; "{out}" is the WAV path. Empty
-     * uses arecord (mono 16 kHz). Example: "parecord --file-format=wav {out}".
+     * CaptureCmd optionally overrides the recorder. It must write raw s16le mono
+     * 16 kHz PCM to stdout; empty uses parecord. Example:
+     * "parecord --raw --format=s16le --rate=16000 --channels=1 --device=alsa_input.x".
      */
     "capture_cmd"?: string;
 
@@ -382,19 +455,26 @@ export class Voice {
      */
     "tts": VoiceTTS;
 
+    /**
+     * Engineer is the LLM race engineer layered on top of the deterministic
+     * grammar: it answers questions and turns free-form requests into pit
+     * commands. Disabled by default; the grammar works without it.
+     */
+    "engineer": Engineer;
+
     /** Creates a new Voice instance. */
     constructor($$source: Partial<Voice> = {}) {
         if (!("enabled" in $$source)) {
             this["enabled"] = false;
         }
-        if (!("whisper_bin" in $$source)) {
-            this["whisper_bin"] = "";
-        }
-        if (!("whisper_model" in $$source)) {
-            this["whisper_model"] = "";
+        if (!("server_url" in $$source)) {
+            this["server_url"] = "";
         }
         if (!("tts" in $$source)) {
             this["tts"] = (new VoiceTTS());
+        }
+        if (!("engineer" in $$source)) {
+            this["engineer"] = (new Engineer());
         }
 
         Object.assign(this, $$source);
@@ -405,34 +485,39 @@ export class Voice {
      */
     static createFrom($$source: any = {}): Voice {
         const $$createField10_0 = $$createType8;
+        const $$createField11_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tts" in $$parsedSource) {
             $$parsedSource["tts"] = $$createField10_0($$parsedSource["tts"]);
+        }
+        if ("engineer" in $$parsedSource) {
+            $$parsedSource["engineer"] = $$createField11_0($$parsedSource["engineer"]);
         }
         return new Voice($$parsedSource as Partial<Voice>);
     }
 }
 
 /**
- * VoiceTTS configures spoken output. Synthesis is delegated to a local CLI (Cmd)
- * that writes a WAV, which is then played — a single command-based path that
- * drives anything from espeak-ng to kokoro-tts. No embedded model, no server.
+ * VoiceTTS configures spoken output. Synthesis runs on the same voice server as
+ * speech-to-text (Kokoro on the GPU) and streams back as PCM played as it
+ * arrives, so speech starts on the first chunk.
  */
 export class VoiceTTS {
     "enabled": boolean;
 
     /**
-     * Cmd is the synth command. "{out}" is the output WAV; "{txt}" — when present —
-     * is a temp file holding the text (kokoro-tts reads a file), else the text is
-     * fed on stdin (espeak-ng/piper). Examples:
-     *   espeak-ng -w {out}
-     *   kokoro-tts {txt} {out} --voice af_sarah --model /path/kokoro-v1.0.onnx --voices /path/voices-v1.0.bin
+     * Voice is the Kokoro voice id (e.g. "af_sarah"); empty uses the server's.
      */
-    "cmd": string;
+    "voice"?: string;
 
     /**
-     * PlayerCmd overrides the audio player ("{out}" = WAV path); empty uses paplay
-     * (Linux) / PowerShell SoundPlayer (Windows).
+     * Speed is the speech rate, 1.0 = normal.
+     */
+    "speed"?: number;
+
+    /**
+     * PlayerCmd overrides the audio player; it must read raw PCM from stdin, with
+     * "{rate}"/"{channels}" substituted. Empty uses pacat.
      */
     "player_cmd"?: string;
 
@@ -446,9 +531,6 @@ export class VoiceTTS {
     constructor($$source: Partial<VoiceTTS> = {}) {
         if (!("enabled" in $$source)) {
             this["enabled"] = false;
-        }
-        if (!("cmd" in $$source)) {
-            this["cmd"] = "";
         }
 
         Object.assign(this, $$source);
@@ -473,3 +555,4 @@ const $$createType5 = Voice.createFrom;
 const $$createType6 = CurvePoint.createFrom;
 const $$createType7 = $Create.Array($$createType6);
 const $$createType8 = VoiceTTS.createFrom;
+const $$createType9 = Engineer.createFrom;

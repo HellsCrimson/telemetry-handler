@@ -6,13 +6,12 @@ import (
 	"time"
 )
 
-// Config is the runtime configuration for the voice MVP, mapped by the app from
-// config.Voice (so this package stays independent of the config package).
+// Config is the runtime configuration for the voice assistant, mapped by the app
+// from config.Voice (so this package stays independent of the config package).
 type Config struct {
-	WhisperBin   string        // path to the whisper.cpp executable
-	WhisperModel string        // path to the ggml model file
+	Remote       RemoteConfig  // GPU voice server (STT + TTS)
 	Language     string        // language hint (default "en")
-	CaptureCmd   string        // optional recorder override ("{out}" = WAV path)
+	CaptureCmd   string        // optional recorder override (raw s16le mono PCM on stdout)
 	Trigger      string        // "fifo" (default) or "button"
 	FIFOPath     string        // FIFO path for Trigger=="fifo"
 	ButtonDevice string        // /dev/input/eventX for Trigger=="button"
@@ -40,12 +39,30 @@ func NewTrigger(ctx context.Context, cfg Config) (Trigger, error) {
 	}
 }
 
-// Build wires a ready-to-run Engine from cfg, the LMU pit controller, and the
-// notifier/logger the app supplies. It constructs the trigger, recorder and
-// whisper transcriber. The caller runs engine.Run(ctx) on a goroutine.
-func Build(ctx context.Context, cfg Config, controller Controller, notify Notifier, logf func(string, ...any)) (*Engine, error) {
-	if cfg.WhisperBin == "" || cfg.WhisperModel == "" {
-		return nil, fmt.Errorf("voice: whisper_bin and whisper_model must be set")
+// Deps are the collaborators the app injects into a built Engine. Only
+// Controller and Notify are required; the rest default to no-ops or the
+// deterministic grammar.
+type Deps struct {
+	// Controller reads and writes LMU's pit menu.
+	Controller Controller
+	// Notify surfaces a message on the overlay banner and in the log.
+	Notify Notifier
+	// Interpreter turns transcripts into intent. Nil uses the grammar.
+	Interpreter Interpreter
+	// Speak says one sentence immediately (streamed engineer answers).
+	Speak func(string)
+	// OnPress runs when the trigger goes down, so the app can silence speech.
+	OnPress func()
+	Logf    func(string, ...any)
+}
+
+// Build wires a ready-to-run Engine from cfg and the app's dependencies. It
+// constructs the trigger and the streaming listener that talks to the voice
+// server. The caller runs engine.Run(ctx) on a goroutine.
+func Build(ctx context.Context, cfg Config, deps Deps) (*Engine, error) {
+	listener, err := NewRemoteListener(cfg.Remote, cfg.CaptureCmd, cfg.Language, deps.Logf)
+	if err != nil {
+		return nil, err
 	}
 	trigger, err := NewTrigger(ctx, cfg)
 	if err != nil {
@@ -53,11 +70,13 @@ func Build(ctx context.Context, cfg Config, controller Controller, notify Notifi
 	}
 	return NewEngine(Options{
 		Trigger:     trigger,
-		Capturer:    ExecCapturer{CmdTemplate: cfg.CaptureCmd},
-		Transcriber: WhisperTranscriber{Bin: cfg.WhisperBin, Model: cfg.WhisperModel, Lang: cfg.Language},
-		Controller:  controller,
-		Notify:      notify,
-		Logf:        logf,
+		Listener:    listener,
+		Interpreter: deps.Interpreter,
+		Controller:  deps.Controller,
+		Notify:      deps.Notify,
+		Speak:       deps.Speak,
+		OnPress:     deps.OnPress,
+		Logf:        deps.Logf,
 		ConfirmTTL:  cfg.ConfirmTTL,
 	}), nil
 }

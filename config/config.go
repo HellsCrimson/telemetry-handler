@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 const (
@@ -39,9 +40,14 @@ const (
 	defaultVoiceTrigger  = "fifo"
 	defaultVoiceFIFOPath = "/tmp/telemetry-handler-ptt"
 	defaultVoiceConfirm  = 6.0
-	// defaultTTSCmd is a zero-setup synth command (robotic but always available);
-	// swap it for kokoro-tts etc. in the dashboard for a natural voice.
-	defaultTTSCmd = "espeak-ng -w {out}"
+	// defaultVoiceServer is where the GPU voice server (deploy/voice-server/)
+	// listens; override it in the dashboard if it runs elsewhere.
+	defaultVoiceServer = "http://127.0.0.1:4400"
+	defaultTTSVoice    = "af_sarah"
+	// Engineer defaults: a short budget, because a late answer is a useless one.
+	defaultEngineerTimeout     = 30.0
+	defaultEngineerMaxTokens   = 220
+	defaultEngineerTemperature = 0.3
 )
 
 type Color [3]uint8
@@ -58,19 +64,24 @@ type Config struct {
 	Voice      Voice     `json:"voice"`
 }
 
-// Voice configures the offline push-to-talk voice-command MVP (whisper.cpp STT +
-// a deterministic grammar driving LMU's pit menu over its REST API). It is
-// Linux-only for now and disabled by default. The trigger is either an external
-// FIFO that something writes "press"/"release" to (a Hyprland keybind, a wheel-
-// button script) or a configured evdev button read directly from /dev/input.
+// Voice configures the push-to-talk voice-command assistant (streaming STT +
+// TTS on the GPU voice server, driving LMU's pit menu through its REST API with
+// a deterministic grammar). Linux-only, disabled by default. The trigger is
+// either an external FIFO that something writes "press"/"release" to (a Hyprland
+// keybind, a wheel-button script) or a configured evdev button read directly
+// from /dev/input.
 type Voice struct {
 	Enabled bool `json:"enabled"`
-	// WhisperBin/WhisperModel point at a local whisper.cpp build and ggml model.
-	WhisperBin   string `json:"whisper_bin"`
-	WhisperModel string `json:"whisper_model"`
-	Language     string `json:"language,omitempty"`
-	// CaptureCmd optionally overrides the recorder; "{out}" is the WAV path. Empty
-	// uses arecord (mono 16 kHz). Example: "parecord --file-format=wav {out}".
+	// ServerURL is the voice server (deploy/voice-server/), e.g.
+	// "http://127.0.0.1:4400". Both speech-to-text and text-to-speech run
+	// there; there is no local fallback.
+	ServerURL string `json:"server_url"`
+	// ServerToken is the optional shared secret (VOICE_TOKEN on the server).
+	ServerToken string `json:"server_token,omitempty"`
+	Language    string `json:"language,omitempty"`
+	// CaptureCmd optionally overrides the recorder. It must write raw s16le mono
+	// 16 kHz PCM to stdout; empty uses parecord. Example:
+	// "parecord --raw --format=s16le --rate=16000 --channels=1 --device=alsa_input.x".
 	CaptureCmd string `json:"capture_cmd,omitempty"`
 	// Trigger is "fifo" (default) or "button".
 	Trigger string `json:"trigger,omitempty"`
@@ -85,21 +96,74 @@ type Voice struct {
 	ConfirmSeconds float64 `json:"confirm_seconds,omitempty"`
 	// TTS reads the assistant's messages (confirmation prompts, results) aloud.
 	TTS VoiceTTS `json:"tts"`
+	// Engineer is the LLM race engineer layered on top of the deterministic
+	// grammar: it answers questions and turns free-form requests into pit
+	// commands. Disabled by default; the grammar works without it.
+	Engineer Engineer `json:"engineer"`
 }
 
-// VoiceTTS configures spoken output. Synthesis is delegated to a local CLI (Cmd)
-// that writes a WAV, which is then played — a single command-based path that
-// drives anything from espeak-ng to kokoro-tts. No embedded model, no server.
+// Engineer configures the LLM race engineer. The endpoint is any
+// OpenAI-compatible chat API (Unsloth Studio, vLLM, llama.cpp).
+type Engineer struct {
+	Enabled bool `json:"enabled"`
+	// BaseURL is the API root, with or without the /v1 suffix.
+	BaseURL string `json:"base_url"`
+	// APIKey authenticates to the endpoint. Prefer the TELEMETRY_ENGINEER_API_KEY
+	// environment variable, which overrides this — a key in config.json is easy
+	// to leak when sharing the file.
+	APIKey string `json:"api_key,omitempty"`
+	Model  string `json:"model"`
+	// TimeoutSeconds bounds one answer. Kept short: an engineer that replies
+	// after the corner is worse than one that says nothing.
+	TimeoutSeconds float64 `json:"timeout_seconds,omitempty"`
+	// MaxTokens caps the reply length, which is what keeps answers radio-brief.
+	MaxTokens   int     `json:"max_tokens,omitempty"`
+	Temperature float64 `json:"temperature,omitempty"`
+	// Callouts enables unprompted radio (flags, fuel, rivals pitting, traffic).
+	// These are rule-based, not model-generated.
+	Callouts bool `json:"callouts"`
+}
+
+// APIKeyValue returns the key to use, preferring the environment variable so the
+// secret need not live in config.json.
+func (e Engineer) APIKeyValue() string {
+	if v := strings.TrimSpace(os.Getenv(EngineerAPIKeyEnv)); v != "" {
+		return v
+	}
+	return strings.TrimSpace(e.APIKey)
+}
+
+// EngineerAPIKeyEnv is the environment variable holding the engineer's API key.
+const EngineerAPIKeyEnv = "TELEMETRY_ENGINEER_API_KEY"
+
+// Validate checks the engineer config when enabled.
+func (e Engineer) Validate() error {
+	if !e.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(e.BaseURL) == "" {
+		return fmt.Errorf("voice.engineer.base_url is required when the engineer is enabled")
+	}
+	if strings.TrimSpace(e.Model) == "" {
+		return fmt.Errorf("voice.engineer.model is required when the engineer is enabled")
+	}
+	if e.TimeoutSeconds < 0 {
+		return fmt.Errorf("voice.engineer.timeout_seconds must be >= 0")
+	}
+	return nil
+}
+
+// VoiceTTS configures spoken output. Synthesis runs on the same voice server as
+// speech-to-text (Kokoro on the GPU) and streams back as PCM played as it
+// arrives, so speech starts on the first chunk.
 type VoiceTTS struct {
 	Enabled bool `json:"enabled"`
-	// Cmd is the synth command. "{out}" is the output WAV; "{txt}" — when present —
-	// is a temp file holding the text (kokoro-tts reads a file), else the text is
-	// fed on stdin (espeak-ng/piper). Examples:
-	//   espeak-ng -w {out}
-	//   kokoro-tts {txt} {out} --voice af_sarah --model /path/kokoro-v1.0.onnx --voices /path/voices-v1.0.bin
-	Cmd string `json:"cmd"`
-	// PlayerCmd overrides the audio player ("{out}" = WAV path); empty uses paplay
-	// (Linux) / PowerShell SoundPlayer (Windows).
+	// Voice is the Kokoro voice id (e.g. "af_sarah"); empty uses the server's.
+	Voice string `json:"voice,omitempty"`
+	// Speed is the speech rate, 1.0 = normal.
+	Speed float64 `json:"speed,omitempty"`
+	// PlayerCmd overrides the audio player; it must read raw PCM from stdin, with
+	// "{rate}"/"{channels}" substituted. Empty uses pacat.
 	PlayerCmd string `json:"player_cmd,omitempty"`
 	// SpeakInfo also reads the neutral transcript echo aloud; by default only the
 	// confirmation prompt, result and errors are spoken.
@@ -254,13 +318,22 @@ func Default() Config {
 		},
 		Voice: Voice{
 			Enabled:        false,
+			ServerURL:      defaultVoiceServer,
 			Language:       defaultVoiceLanguage,
 			Trigger:        defaultVoiceTrigger,
 			FIFOPath:       defaultVoiceFIFOPath,
 			ConfirmSeconds: defaultVoiceConfirm,
 			TTS: VoiceTTS{
 				Enabled: false,
-				Cmd:     defaultTTSCmd,
+				Voice:   defaultTTSVoice,
+				Speed:   1,
+			},
+			Engineer: Engineer{
+				Enabled:        false,
+				TimeoutSeconds: defaultEngineerTimeout,
+				MaxTokens:      defaultEngineerMaxTokens,
+				Temperature:    defaultEngineerTemperature,
+				Callouts:       false,
 			},
 		},
 	}
@@ -368,14 +441,14 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// Validate checks the voice config when enabled: a whisper binary + model are
+// Validate checks the voice config when enabled: the voice server URL is
 // required, and the selected trigger needs its own field set.
 func (v Voice) Validate() error {
 	if !v.Enabled {
 		return nil
 	}
-	if v.WhisperBin == "" || v.WhisperModel == "" {
-		return fmt.Errorf("voice.whisper_bin and voice.whisper_model are required when voice is enabled")
+	if v.ServerURL == "" {
+		return fmt.Errorf("voice.server_url is required when voice is enabled (see deploy/voice-server/)")
 	}
 	switch v.Trigger {
 	case "", "fifo":
@@ -392,10 +465,10 @@ func (v Voice) Validate() error {
 	if v.ConfirmSeconds < 0 {
 		return fmt.Errorf("voice.confirm_seconds must be >= 0")
 	}
-	if v.TTS.Enabled && v.TTS.Cmd == "" {
-		return fmt.Errorf("voice.tts.cmd is required when voice.tts is enabled")
+	if v.TTS.Speed < 0 {
+		return fmt.Errorf("voice.tts.speed must be >= 0")
 	}
-	return nil
+	return v.Engineer.Validate()
 }
 
 func (c Config) ValidateOverlayMode() error {

@@ -1,0 +1,39 @@
+# Voice server for telemetry-handler, on the GPU box (127.0.0.1).
+#
+#   docker compose up -d --build
+#   curl -s http://localhost:4400/healthz | jq
+#
+# The first start downloads the Whisper and Kokoro weights into the models
+# volume (a few GB) — /healthz answers 503 with "ready": false until that and
+# the warm-up pass are done, which is also what the healthcheck waits for.
+services:
+  voice:
+    build: .
+    image: telemetry-voice:local
+    container_name: telemetry-voice
+    runtime: nvidia
+    restart: unless-stopped
+    ports:
+      - "4400:8000"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      # Speech to text
+      VOICE_STT_MODEL: distil-large-v3
+      VOICE_STT_DEVICE: cuda
+      VOICE_STT_COMPUTE: float16
+      VOICE_STT_LANGUAGE: en
+      # Interim transcripts while the trigger is held. Off by default: the extra
+      # GPU passes compete with the final decode the confirmation flow waits on.
+      VOICE_STT_PARTIALS: "0"
+      # Text to speech
+      VOICE_TTS_DEVICE: cuda
+      VOICE_TTS_VOICE: af_sarah
+      VOICE_TTS_SPEED: "1.0"
+      # Optional shared secret; set the same value in the app's voice settings.
+      VOICE_TOKEN: ""
+    volumes:
+      - voice-models:/cache
+
+volumes:
+  voice-models:

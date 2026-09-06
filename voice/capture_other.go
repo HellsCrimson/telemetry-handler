@@ -1,22 +1,25 @@
-//go:build !linux && !windows
+//go:build !linux
 
 package voice
 
 import (
 	"fmt"
-	"io"
 	"os/exec"
 )
 
-// defaultCaptureCommand has no built-in recorder on these platforms; configure a
-// CmdTemplate to use the voice MVP.
-func defaultCaptureCommand(string) (string, []string, error) {
-	return "", nil, fmt.Errorf("no default audio capture on this platform; set voice.capture_cmd")
+// The voice assistant is Linux-only: capture, playback and the push-to-talk
+// triggers all rely on PulseAudio/PipeWire and evdev. Off Linux the feature
+// reports a clear error instead of half-working.
+func defaultCaptureCommand() (string, []string, error) {
+	return "", nil, fmt.Errorf("voice: audio capture is only supported on Linux")
 }
 
-func stopRecorder(cmd *exec.Cmd, stdin io.WriteCloser) {
-	closeStdin(stdin)
+func stopRecorder(cmd *exec.Cmd) {
 	if cmd.Process != nil {
 		_ = cmd.Process.Kill()
 	}
+}
+
+func defaultPlayerCommand() (string, []string, error) {
+	return "", nil, fmt.Errorf("voice: audio playback is only supported on Linux")
 }

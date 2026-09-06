@@ -4,10 +4,10 @@ import "testing"
 
 func TestParseFuel(t *testing.T) {
 	tests := []struct {
-		text    string
-		liters  float64
-		set     bool
-		max     bool
+		text   string
+		liters float64
+		set    bool
+		max    bool
 	}{
 		{"fuel to 30", 30, true, false},
 		{"add 45 litres of fuel", 45, true, false},
@@ -31,10 +31,10 @@ func TestParseFuel(t *testing.T) {
 
 func TestParseEnergy(t *testing.T) {
 	tests := []struct {
-		text   string
-		pct    float64
-		set    bool
-		max    bool
+		text string
+		pct  float64
+		set  bool
+		max  bool
 	}{
 		{"energy to 50", 50, true, false},
 		{"virtual energy 80 percent", 80, true, false},

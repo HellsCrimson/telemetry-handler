@@ -13,5 +13,6 @@ export {
     OverlayStatus,
     ReplaySample,
     TelemetryMeta,
-    TelemetrySnapshot
+    TelemetrySnapshot,
+    VoiceTestResult
 } from "./models.js";

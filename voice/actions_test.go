@@ -25,10 +25,20 @@ func pressureOpts() []string {
 // fakeController is a stand-in for *rest.Client: it serves a fixed pit menu and
 // records the writes Resolve/Apply would send to the game.
 type fakeController struct {
-	menu    []rest.PitMenuItem
-	writes  [][2]int // {pmc, setting}
-	menuErr error
-	setErr  error
+	menu        []rest.PitMenuItem
+	writes      [][2]int // {pmc, setting}
+	setupWrites []SetupWrite
+	menuErr     error
+	setErr      error
+	setupErr    error
+}
+
+func (f *fakeController) SetSetupValue(_ context.Context, key string, value int) error {
+	if f.setupErr != nil {
+		return f.setupErr
+	}
+	f.setupWrites = append(f.setupWrites, SetupWrite{Key: key, Value: value})
+	return nil
 }
 
 func (f *fakeController) PitMenu(context.Context) ([]rest.PitMenuItem, error) {
