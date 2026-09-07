@@ -1,0 +1,715 @@
+/* The recurring pieces of the interface.
+ *
+ * Every screen is built from these. When a new tab needs something that is not
+ * here, the right move is usually to add it here first — a one-off style in a
+ * tab is how a design system quietly stops being one.
+ */
+
+/* --- App shell ----------------------------------------------------------- */
+
+.app-shell {
+  min-height: 100vh;
+  background: var(--bg-app);
+  color: var(--ink);
+  font: var(--t-ui);
+}
+
+/* Header: identity, mode toggle, live/recording status. Fixed 48px. */
+.app-header {
+  display: flex;
+  align-items: center;
+  height: var(--h-header);
+  padding: 0 var(--s-7);
+  gap: var(--s-7);
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.app-mark {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #3a424f;
+  border-radius: var(--radius-inner);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 9px var(--font-mono);
+  color: var(--ink);
+}
+
+.app-name {
+  font: 500 12px var(--font-mono);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.app-version {
+  font: 400 10px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+/* Mode toggle — dashboard vs pit wall. A segmented control rather than tabs,
+ * because these are two different interfaces, not two views of one. */
+.mode-toggle {
+  display: flex;
+  padding: var(--s-1);
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  gap: var(--s-1);
+}
+
+.mode-toggle button {
+  padding: 0 var(--s-7);
+  height: 24px;
+  display: flex;
+  align-items: center;
+  font: 500 11.5px var(--font-sans);
+  color: var(--ink-mid);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-inner);
+  cursor: pointer;
+}
+
+.mode-toggle button:hover {
+  color: var(--ink);
+}
+
+.mode-toggle button[aria-pressed="true"] {
+  color: var(--bg-app);
+  background: #c9d1dc;
+}
+
+.app-header .spacer,
+.context-bar .spacer,
+.tab-bar .spacer {
+  flex: 1;
+}
+
+/* Status chips: source live, recording. Tinted ground, never a saturated fill. */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--ink-mid);
+  white-space: nowrap;
+}
+
+.chip .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chip .meta {
+  font: 400 10px var(--font-mono);
+  letter-spacing: 0;
+  color: var(--ink-lo);
+}
+
+.chip.live {
+  background: var(--sem-good-bg);
+  border-color: var(--sem-good-line);
+  color: var(--sem-good);
+}
+
+.chip.rec {
+  background: var(--sem-crit-bg);
+  border-color: var(--sem-crit-line);
+  color: var(--sem-crit);
+}
+
+.chip.rec .dot {
+  animation: rec-pulse 2s ease-in-out infinite;
+}
+
+.chip.idle {
+  background: var(--bg-panel);
+  color: var(--ink-mid);
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Context bar: what session this is, at a glance. Fixed 32px. */
+.context-bar {
+  display: flex;
+  align-items: center;
+  height: var(--h-context);
+  padding: 0 var(--s-7);
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--line);
+  gap: 0;
+}
+
+.context-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+}
+
+.context-title strong {
+  font: 500 11.5px var(--font-sans);
+  color: var(--ink-hi);
+}
+
+.context-title span {
+  font: 400 10.5px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+.context-rule {
+  width: 1px;
+  height: 14px;
+  background: var(--line);
+  margin: 0 var(--s-7);
+}
+
+.context-facts {
+  display: flex;
+  gap: var(--s-8);
+  font: 400 10.5px var(--font-mono);
+  color: var(--ink-mid);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.context-facts b {
+  font-weight: 400;
+  color: var(--ink-hi);
+}
+
+/* Flag banner — the one place colour is allowed to fill a bar. */
+.flag-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 var(--s-4);
+  height: 20px;
+  border-radius: var(--radius-inner);
+  font: 600 10px var(--font-mono);
+  letter-spacing: 0.07em;
+}
+
+.flag-banner .swatch {
+  width: 8px;
+  height: 8px;
+}
+
+.flag-banner.fcy {
+  background: oklch(0.83 0.14 82 / 0.12);
+  border: 1px solid oklch(0.83 0.14 82 / 0.35);
+  color: var(--sem-warn);
+}
+
+.flag-banner.fcy .swatch { background: var(--sem-warn); }
+
+.flag-banner.red {
+  background: oklch(0.68 0.18 25 / 0.12);
+  border: 1px solid oklch(0.68 0.18 25 / 0.35);
+  color: var(--sem-crit);
+}
+
+.flag-banner.red .swatch { background: var(--sem-crit); }
+
+/* --- Tab bar -------------------------------------------------------------- */
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  height: var(--h-tabs);
+  padding: 0 var(--s-4);
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-bar::-webkit-scrollbar { display: none; }
+
+.tab-bar button {
+  padding: 0 var(--s-6);
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font: var(--t-ui);
+  color: var(--ink-mid);
+  background: none;
+  border: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab-bar button:hover {
+  color: var(--ink);
+  background: #151a20;
+}
+
+.tab-bar button[aria-selected="true"] {
+  font-weight: 500;
+  color: var(--ink-hi);
+  box-shadow: inset 0 -2px 0 var(--ink-hi);
+}
+
+.tab-bar button:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.tab-bar button:disabled:hover { background: none; }
+
+/* A dot on a tab means that page has something worth looking at. */
+.tab-bar .tab-alert {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--sem-warn);
+}
+
+/* --- Page & panels -------------------------------------------------------- */
+
+.page {
+  padding: var(--s-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-7);
+  background: var(--bg-app);
+}
+
+.row {
+  display: flex;
+  gap: var(--s-7);
+  align-items: stretch;
+  min-width: 0;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  height: var(--h-panel-head);
+  padding: 0 var(--s-5);
+  gap: var(--s-5);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.panel-label {
+  font: var(--t-label);
+  letter-spacing: var(--ls-label);
+  color: var(--ink-mid);
+  white-space: nowrap;
+}
+
+.panel-meta {
+  font: 400 9.5px var(--font-mono);
+  color: var(--ink-lo);
+  white-space: nowrap;
+}
+
+.panel-body {
+  padding: var(--s-6);
+  min-width: 0;
+}
+
+/* Panels never nest more than one level. A panel inside a panel becomes a
+ * 1px-gridded cell group instead — see .cell-grid. */
+.cell-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.cell-grid > * {
+  background: var(--bg-panel);
+}
+
+/* --- Stat readout --------------------------------------------------------- */
+
+.stat {
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.stat-label {
+  font: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--ls-label);
+  color: var(--ink-lo);
+}
+
+.stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.stat-value b {
+  font: var(--t-readout-m);
+  color: var(--ink-hi);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value .unit {
+  font: 400 10.5px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+.stat-note {
+  font: 400 10px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+/* Semantic states. Applied to the stat, they colour the value and its note
+ * together, so the pair reads as one signal. */
+.stat.good .stat-value b, .stat.good .stat-note { color: var(--sem-good); }
+.stat.warn .stat-value b, .stat.warn .stat-note { color: var(--sem-warn); }
+.stat.crit .stat-value b, .stat.crit .stat-note { color: var(--sem-crit); }
+.stat.cold .stat-value b, .stat.cold .stat-note { color: var(--sem-cold); }
+.stat.best .stat-value b, .stat.best .stat-note { color: var(--sem-best); }
+
+/* Hero readout — speed and gear only. */
+.hero {
+  display: flex;
+  align-items: flex-end;
+  gap: 22px;
+}
+
+.hero-value {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.hero-value b {
+  font: var(--t-readout-xl);
+  letter-spacing: -0.02em;
+  color: var(--ink-hi);
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-value .unit {
+  font: 400 12px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+/* --- Bars: RPM segments, pedals, wear ------------------------------------- */
+
+.seg-bar {
+  display: flex;
+  gap: var(--s-1);
+  height: 12px;
+}
+
+.seg-bar > i {
+  flex: 1;
+  background: var(--line-soft);
+}
+
+.bar {
+  height: var(--s-2);
+  background: var(--bg-inset);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+
+.bar.throttle > i { background: var(--sem-good); }
+.bar.brake > i { background: var(--sem-crit); }
+.bar.clutch > i { background: var(--sem-cold); }
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 54px 1fr 38px;
+  align-items: center;
+  gap: var(--s-4);
+  font: var(--t-micro);
+  letter-spacing: var(--ls-micro);
+  color: var(--ink-lo);
+}
+
+.bar-row .val {
+  text-align: right;
+  font: 400 10.5px var(--font-mono);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Dense table ---------------------------------------------------------- */
+
+.dense {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.dense-head,
+.dense-row {
+  display: grid;
+  gap: 0 var(--s-4);
+  align-items: center;
+}
+
+.dense-head {
+  height: var(--h-row-compact);
+  padding: 0 var(--s-5) 0 var(--s-6);
+  border-bottom: 1px solid var(--line);
+  font: var(--t-micro);
+  letter-spacing: var(--ls-micro);
+  color: var(--ink-lo);
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  z-index: 1;
+}
+
+.dense-row {
+  height: var(--h-row);
+  padding: 0 var(--s-5) 0 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-left: 2px solid transparent;
+  font: var(--t-data);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.dense-row:nth-child(even) { background: var(--bg-row-alt); }
+.dense-row:hover { background: var(--bg-row-hover); }
+
+/* The driver's own car: brighter ink and a white spine, so it is findable
+ * without scanning. */
+.dense-row.is-me {
+  background: var(--bg-row-hover);
+  color: var(--ink-hi);
+  border-left-color: var(--ink-hi);
+}
+
+.dense-row .num { text-align: right; }
+.dense-row .mid { text-align: center; }
+.dense-row .name {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dense-row.is-me .name { font-weight: 600; }
+
+/* Class grouping band inside a table. */
+.dense-group {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  height: 22px;
+  padding: 0 var(--s-6);
+  background: #0f1216;
+  border-bottom: 1px solid var(--line-soft);
+  font: 600 9.5px var(--font-mono);
+  letter-spacing: 0.11em;
+  color: var(--ink);
+}
+
+.dense-group .spine {
+  width: 3px;
+  height: 11px;
+}
+
+/* Value states inside a row. */
+.v-best { color: var(--sem-best); }
+.v-good { color: var(--sem-good); }
+.v-warn { color: var(--sem-warn); }
+.v-crit { color: var(--sem-crit); }
+.v-cold { color: var(--sem-cold); }
+.v-dim { color: var(--ink-mid); }
+.v-absent { color: var(--ink-faint); }
+
+/* --- Chart frame ---------------------------------------------------------- */
+
+.chart-frame {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chart-frame .panel-head { border-bottom: 1px solid var(--line); }
+
+.chart-legend {
+  display: flex;
+  gap: var(--s-5);
+  font: 400 9.5px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+.chart-legend span {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.chart-legend i {
+  width: 10px;
+  height: 2px;
+  background: currentColor;
+}
+
+.chart-well {
+  padding: var(--s-3) var(--s-3) var(--s-1);
+  min-width: 0;
+}
+
+.chart-foot {
+  display: flex;
+  height: 22px;
+  align-items: center;
+  padding: 0 var(--s-5);
+  border-top: 1px solid var(--line);
+  font: 400 9.5px var(--font-mono);
+  letter-spacing: 0.04em;
+  color: var(--ink-lo);
+}
+
+/* --- Empty / no signal ---------------------------------------------------- */
+
+/* The game is not running most of the time the app is open, so this state is
+ * seen more than any single tab. It says what is missing and what to do, and
+ * never pretends to be data.
+ */
+.empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-align: center;
+  padding: var(--s-6);
+  min-height: 112px;
+}
+
+.empty .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-mid);
+  animation: nosig 1.8s ease-in-out infinite;
+}
+
+.empty-title {
+  font: 600 10.5px var(--font-mono);
+  letter-spacing: 0.11em;
+  color: var(--ink-mid);
+}
+
+.empty-body {
+  font: 400 10px/1.45 var(--font-sans);
+  color: var(--ink-lo);
+  max-width: 260px;
+}
+
+@keyframes nosig {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* --- Controls ------------------------------------------------------------- */
+
+.btn {
+  height: 24px;
+  padding: 0 var(--s-5);
+  font: 500 11px var(--font-sans);
+  color: var(--ink);
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-inner);
+  cursor: pointer;
+}
+
+.btn:hover { color: var(--ink-hi); border-color: #46505f; }
+.btn:disabled { color: var(--ink-faint); cursor: default; }
+
+.btn.primary {
+  color: var(--bg-app);
+  background: #c9d1dc;
+  border-color: #c9d1dc;
+}
+
+*:focus-visible {
+  outline: 1px solid var(--line-strong);
+  outline-offset: 1px;
+}
+
+/* --- Bridging the unconverted tabs ---------------------------------------- */
+
+/* The legacy sheet (public/style.css) still carries the tabs that have not been
+ * converted. These rules stop the two systems fighting over the shared shell
+ * while that is true, and can be deleted once the last tab moves across.
+ */
+
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+/* Legacy pages render inside <main>; the converted ones bring their own .page
+ * padding, so main must not add a second layer of it. */
+main {
+  padding: 0;
+}
+
+main > .tabpage {
+  padding: var(--s-7);
+}
+
+/* Apply/Save sat in the old header. Until the settings tab is converted they
+ * live on their own strip, right-aligned under the tab bar. */
+.page-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-7) 0;
+}

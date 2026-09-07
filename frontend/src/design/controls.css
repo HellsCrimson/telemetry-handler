@@ -1,0 +1,490 @@
+/* Form controls.
+ *
+ * Defined once here because three screens need the identical set — the MOZA
+ * wheelbase page and both Settings tabs — and a control styled per screen is
+ * how three subtly different sliders end up in one app.
+ *
+ * Three patterns in here carry meaning rather than decoration:
+ *
+ *   Field row  A 34px row, label column left, control right, one-line sub-label
+ *              for the explanation. No tooltips: if a setting needs explaining,
+ *              the explanation is visible, or the setting is wrong.
+ *
+ *   Drift      A value that differs from the saved profile takes an amber spine,
+ *              an amber border and amber digits, with the signed delta in the
+ *              right gutter. Revert clears it; Save commits it. This is what
+ *              makes "I changed something and forgot" impossible to miss.
+ *
+ *   Disabled   Never hidden and never a modal. Tracks flatten, ink drops, and a
+ *              line of prose says why and what happens next — a control that
+ *              vanishes when the wheel is off teaches the user nothing.
+ */
+
+/* --- Field row ------------------------------------------------------------ */
+
+.field {
+  display: grid;
+  grid-template-columns: var(--field-label, 180px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 var(--s-6);
+  min-height: 34px;
+  padding: 0 var(--s-5);
+  border-bottom: 1px solid var(--line-soft);
+  border-left: 2px solid transparent;
+}
+
+.field:last-child { border-bottom: 0; }
+
+.field-label {
+  font: var(--t-ui);
+  color: var(--ink);
+}
+
+/* The one-line explanation. Sits under the label, never in a tooltip. */
+.field-hint {
+  display: block;
+  font: 400 9.5px/1.35 var(--font-sans);
+  color: var(--ink-lo);
+  margin-top: 1px;
+}
+
+.field-control {
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  min-width: 0;
+}
+
+/* The right gutter carries the delta from the saved value; empty otherwise, so
+ * the column stays put. */
+.field-delta {
+  min-width: 52px;
+  text-align: right;
+  font: 400 10px var(--font-mono);
+  color: var(--ink-lo);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A value that no longer matches the saved profile. */
+.field.drifted {
+  border-left-color: var(--sem-warn);
+}
+
+.field.drifted .field-delta {
+  color: var(--sem-warn);
+}
+
+.field.disabled .field-label,
+.field.disabled .field-hint {
+  color: var(--ink-faint);
+}
+
+/* Group of fields inside a panel: a rule above the first so the group reads as
+ * a block rather than a list. */
+.field-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  height: 24px;
+  padding: 0 var(--s-5);
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--line);
+  font: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--ls-label);
+  color: var(--ink-mid);
+}
+
+/* --- Slider --------------------------------------------------------------- */
+
+/* Built on a native range input so keyboard, drag and accessibility come free;
+ * only the track and thumb are restyled. The ghost mark showing the saved value
+ * is a background gradient stop rather than an extra element, so the control
+ * stays one node. */
+.slider {
+  position: relative;
+  flex: 1;
+  min-width: 80px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.slider input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--slider-track, #1b1f26);
+}
+
+.slider input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--slider-track, #1b1f26);
+}
+
+/* The filled portion. Firefox has a native progress element; WebKit needs the
+ * fill painted into the track via a gradient set from JS as --fill. */
+.slider input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: #8a94a3;
+}
+
+.slider.webkit-fill input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    #8a94a3 0,
+    #8a94a3 var(--fill, 0%),
+    #1b1f26 var(--fill, 0%),
+    #1b1f26 100%
+  );
+}
+
+.slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -3px;
+  border: 0;
+  border-radius: var(--radius-inner);
+  background: var(--ink-hi);
+}
+
+.slider input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: var(--radius-inner);
+  background: var(--ink-hi);
+}
+
+.slider input[type="range"]:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(232, 235, 239, 0.16);
+}
+
+.slider input[type="range"]:hover::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(232, 235, 239, 0.16);
+}
+
+/* The saved-profile value, as a 1px mark behind the thumb. Without it "drifted"
+ * tells you something changed but not from what. */
+.slider .ghost {
+  position: absolute;
+  width: 1px;
+  height: 13px;
+  background: var(--ink-lo);
+  pointer-events: none;
+}
+
+.slider.disabled input[type="range"] { cursor: default; }
+
+.slider.disabled input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--bg-row-alt);
+}
+
+.slider.disabled input[type="range"]::-moz-range-track { background: var(--bg-row-alt); }
+.slider.disabled input[type="range"]::-moz-range-progress { background: #282e37; }
+
+.slider.disabled.webkit-fill input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    #282e37 0,
+    #282e37 var(--fill, 0%),
+    var(--bg-row-alt) var(--fill, 0%),
+    var(--bg-row-alt) 100%
+  );
+}
+
+.slider.disabled input[type="range"]::-webkit-slider-thumb { background: var(--ink-faint); }
+.slider.disabled input[type="range"]::-moz-range-thumb { background: var(--ink-faint); }
+
+/* --- Number field --------------------------------------------------------- */
+
+/* Always paired with a slider, never the only way to set a value: the slider is
+ * for feel, the field is for a number someone gave you. */
+.numfield {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  width: 78px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-inner);
+  padding: 0 7px;
+  flex: none;
+}
+
+.numfield input {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font: 400 11.5px var(--font-mono);
+  color: var(--ink-hi);
+  background: none;
+  border: 0;
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.numfield input:focus { outline: none; }
+.numfield:focus-within { border-color: #4a5464; }
+
+/* Hide the spinners: the slider is the coarse control. */
+.numfield input::-webkit-outer-spin-button,
+.numfield input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.numfield input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+.numfield .unit {
+  font: 400 10px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+.numfield.drifted {
+  border-color: oklch(0.83 0.14 82 / 0.45);
+}
+
+.numfield.drifted input { color: var(--sem-warn); }
+
+.numfield.disabled {
+  background: #0d1014;
+  border-color: #1b1f26;
+}
+
+.numfield.disabled input { color: var(--ink-lo); }
+.numfield.disabled .unit { color: var(--ink-faint); }
+
+/* --- Text field ----------------------------------------------------------- */
+
+.textfield {
+  height: 26px;
+  min-width: 0;
+  flex: 1;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-inner);
+  padding: 0 8px;
+  font: var(--t-ui);
+  color: var(--ink-hi);
+}
+
+.textfield:focus { outline: none; border-color: #4a5464; }
+.textfield:disabled { background: #0d1014; border-color: #1b1f26; color: var(--ink-lo); }
+
+/* Paths, ports and commands are values, not prose. */
+.textfield.mono {
+  font: 400 11.5px var(--font-mono);
+}
+
+/* --- Select --------------------------------------------------------------- */
+
+/* A native select, with the chevron drawn as a CSS triangle rather than an icon
+ * font — the app ships no icon set and should not gain one for this. */
+.select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  min-width: 0;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-inner);
+}
+
+.select select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 100%;
+  padding: 0 24px 0 8px;
+  font: var(--t-ui);
+  color: var(--ink-hi);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.select select:focus { outline: none; }
+.select:focus-within { border-color: #4a5464; }
+
+.select::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid var(--ink-mid);
+  pointer-events: none;
+}
+
+.select.disabled,
+.select:has(select:disabled) {
+  background: #0d1014;
+  border-color: #1b1f26;
+}
+
+.select:has(select:disabled) select { color: var(--ink-lo); cursor: default; }
+.select:has(select:disabled)::after { border-top-color: var(--ink-faint); }
+
+/* --- Segmented control ---------------------------------------------------- */
+
+/* For a small closed set where seeing all the options matters — a mode, not a
+ * list. Same construction as the header's mode toggle, one size down. */
+.segmented {
+  display: flex;
+  padding: var(--s-1);
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-inner);
+  gap: var(--s-1);
+  width: max-content;
+}
+
+.segmented button {
+  padding: 0 11px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  font: 500 10.5px var(--font-sans);
+  color: var(--ink-mid);
+  background: none;
+  border: 0;
+  border-radius: 1px;
+  cursor: pointer;
+}
+
+.segmented button:hover:not([aria-pressed="true"]):not(:disabled) { color: var(--ink); }
+
+.segmented button[aria-pressed="true"] {
+  color: var(--bg-app);
+  background: #c9d1dc;
+}
+
+.segmented button:disabled { color: var(--ink-faint); cursor: default; }
+
+/* --- Toggle --------------------------------------------------------------- */
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+.toggle .track {
+  width: 30px;
+  height: 16px;
+  border-radius: var(--radius-inner);
+  background: var(--line);
+  padding: var(--s-1);
+  display: flex;
+  justify-content: flex-start;
+  flex: none;
+}
+
+.toggle .knob {
+  width: 12px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--ink-mid);
+}
+
+.toggle[aria-pressed="true"] .track {
+  background: #c9d1dc;
+  justify-content: flex-end;
+}
+
+.toggle[aria-pressed="true"] .knob { background: var(--bg-app); }
+
+.toggle .toggle-text {
+  font: 400 10px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+.toggle:disabled { cursor: default; }
+.toggle:disabled .track { background: var(--line-soft); }
+.toggle:disabled .knob { background: var(--ink-faint); }
+.toggle:disabled .toggle-text { color: var(--ink-faint); }
+
+/* --- Colour swatch -------------------------------------------------------- */
+
+/* Picks from the semantic ramp only. An arbitrary colour picker would let the
+ * LEDs disagree with every other colour in the app, and the ramp is the thing
+ * the driver has already learned. */
+.swatches {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+}
+
+.swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-inner);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--ink-hi);
+}
+
+/* The last slot is "no LED" rather than a colour. */
+.swatch.none {
+  background: none;
+  border: 1px dashed var(--line-strong);
+}
+
+/* --- Device strip --------------------------------------------------------- */
+
+/* Hardware presence, at the top of any page that talks to a device. The wheel
+ * is off or unplugged often enough that this is a first-class row, not an
+ * error banner that appears when something breaks. */
+.device-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-7);
+  height: 34px;
+  padding: 0 var(--s-6);
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: 400 10.5px var(--font-mono);
+  color: var(--ink-mid);
+}
+
+.device-strip .name {
+  font: 500 11.5px var(--font-sans);
+  color: var(--ink-hi);
+}
+
+.device-strip b {
+  font-weight: 400;
+  color: var(--ink);
+}

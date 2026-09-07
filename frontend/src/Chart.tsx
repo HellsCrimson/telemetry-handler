@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as echarts from "echarts";
 import { type ChartDefinition, type HistorySample, colorForField } from "./telemetry";
+import { chartAxis, chartBase } from "./design/chartTheme";
 
 // Highlight shades an x-range of the chart (by sample index) — used by the
 // Review tab to mark where the analysis found an issue.
@@ -18,17 +19,23 @@ interface ChartProps {
   // relative lap time instead).
   xLabels?: string[];
   highlights?: Highlight[];
+  // footer is the unit/range line under the plot; omitted when there is nothing
+  // useful to say.
+  footer?: string;
+  // height overrides the plot height for panels that need more or less room.
+  height?: number;
 }
 
 // Chart renders a single ECharts line panel from the rolling telemetry history,
 // matching the option set used by the original dashboard.
-export default function Chart({ definition, history, xLabels, highlights }: ChartProps) {
+export default function Chart({ definition, history, xLabels, highlights, footer, height }: ChartProps) {
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
 
   useEffect(() => {
     if (!elRef.current) return;
-    const chart = echarts.init(elRef.current, "dark", { renderer: "canvas" });
+    // No built-in theme: everything the plot draws comes from design/chartTheme.
+    const chart = echarts.init(elRef.current, undefined, { renderer: "canvas" });
     chartRef.current = chart;
     const onResize = () => chart.resize();
     window.addEventListener("resize", onResize);
@@ -49,7 +56,7 @@ export default function Chart({ definition, history, xLabels, highlights }: Char
       showSymbol: false,
       smooth: true,
       sampling: "lttb",
-      lineStyle: { width: 2, color: colorForField(field) },
+      lineStyle: { width: 1.4, color: colorForField(field) },
       itemStyle: { color: colorForField(field) },
       data: history.map((sample) => {
         const value = Number(sample.telemetry[field.field] ?? 0);
@@ -81,18 +88,42 @@ export default function Chart({ definition, history, xLabels, highlights }: Char
       if (peak > 0) yMax = peak + (definition.yMaxPad ?? 0);
     }
 
+    // The frame draws the title and legend, so the plot carries neither — that
+    // is what keeps the chart aligned with the panels around it instead of
+    // floating inside its own padding.
     chart.setOption({
-      backgroundColor: "transparent",
-      title: { text: definition.title, left: 10, top: 8, textStyle: { fontSize: 13 } },
-      tooltip: { trigger: "axis" },
-      legend: { top: 34, type: "scroll" },
-      grid: { left: 46, right: 18, top: 74, bottom: 34 },
-      xAxis: { type: "category", boundaryGap: false, data: labels },
-      yAxis: { type: "value", min: definition.yMin, max: yMax, scale: definition.yMin === undefined && yMax === undefined },
+      ...chartBase,
+      xAxis: { ...chartAxis, type: "category", boundaryGap: false, data: labels, splitLine: { show: false } },
+      yAxis: {
+        ...chartAxis,
+        type: "value",
+        min: definition.yMin,
+        max: yMax,
+        scale: definition.yMin === undefined && yMax === undefined,
+      },
       series,
       animation: false,
     });
   }, [definition, history, xLabels, highlights]);
 
-  return <div className="chart" ref={elRef} />;
+  return (
+    <div className="chart-frame">
+      <div className="panel-head">
+        <div className="panel-label">{definition.title.toUpperCase()}</div>
+        <div className="spacer" />
+        <div className="chart-legend">
+          {definition.fields.map((field) => (
+            <span key={field.field} style={{ color: colorForField(field) }}>
+              <i />
+              <em style={{ fontStyle: "normal", color: "var(--ink-lo)" }}>{field.name}</em>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="chart-well">
+        <div className="chart" ref={elRef} style={{ height: height ?? 200 }} />
+      </div>
+      {footer && <div className="chart-foot">{footer}</div>}
+    </div>
+  );
 }

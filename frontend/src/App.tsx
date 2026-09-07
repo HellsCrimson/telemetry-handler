@@ -22,6 +22,7 @@ import { TrackVisualizer } from "./TrackVisualizer";
 import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
 import { CurveEditor, presetCurve } from "./CurveEditor";
 import StrategyApp from "./strategy/StrategyApp";
+import { AppHeader, ContextBar, TabBar, Stat, Empty, type StatTone } from "./design/Shell";
 
 const HISTORY_MS = 120000;
 
@@ -53,7 +54,9 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [history, setHistory] = useState<HistorySample[]>([]);
   const [statusText, setStatusText] = useState("Starting");
-  const [statusLevel, setStatusLevel] = useState<"normal" | "error">("normal");
+  // statusLevel is retained for the legacy tabs' banner styling until they are
+  // converted; the new header shows the text alone.
+  const [, setStatusLevel] = useState<"normal" | "error">("normal");
 
   const [recordingStatus, setRecordingStatus] = useState<any>({ active: false, records: 0 });
   const [recordings, setRecordings] = useState<any[]>([]);
@@ -517,19 +520,37 @@ export default function App() {
     return <StrategyApp onExit={() => setMode("dashboard")} />;
   }
 
+  const live = snapshot?.available
+    ? { label: `${(GAME_NAMES[game] ?? game).toUpperCase()} · LIVE`, rate: undefined }
+    : null;
+
   return (
-    <>
-      <header className="topbar">
-        <div>
-          <h1>Telemetry Handler</h1>
-          <p id="status" data-level={statusLevel}>{statusText}</p>
+    <div className="app-shell">
+      <AppHeader
+        mode="dashboard"
+        onMode={(m) => m === "strategy" && setMode("strategy")}
+        source={live}
+        recording={recordingStatus?.active ? String(recordingStatus.records ?? 0) + " rec" : null}
+      >
+        <div className="context-rule" />
+        <div className="context-facts">
+          <span>{statusText}</span>
         </div>
-        <div className="actions">
-          <button className="secondary" onClick={() => setMode("strategy")}>Strategy Planner</button>
-          <button onClick={applyConfig}>Apply</button>
-          <button onClick={saveConfig}>Save</button>
-        </div>
-      </header>
+      </AppHeader>
+
+      <ContextBar
+        title={snapshot?.meta?.track || undefined}
+        kind={snapshot?.meta?.car || undefined}
+        facts={[
+          ...(t?.LapNumber ? [{ label: "LAP", value: String(t.LapNumber) }] : []),
+          ...(isFieldAvailable(game, "RacePosition") && t?.RacePosition
+            ? [{ label: "POS", value: `P${t.RacePosition}` }]
+            : []),
+          ...(snapshot?.meta?.session_time
+            ? [{ label: "SESSION", value: formatSessionTime(snapshot.meta.session_time) }]
+            : []),
+        ]}
+      />
 
       {configError && (
         <div className="banner banner-error" role="alert">
@@ -538,13 +559,18 @@ export default function App() {
         </div>
       )}
 
-      <nav className="tabs" aria-label="Dashboard sections">
-        {visibleTabs.map(([id, label]) => (
-          <button key={id} className={`tab${activeTab === id ? " active" : ""}`} onClick={() => setActiveTab(id)}>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <TabBar
+        label="Dashboard sections"
+        active={activeTab}
+        onSelect={(id) => setActiveTab(id as typeof activeTab)}
+        tabs={visibleTabs.filter(([id]) => id !== "settings").map(([id, label]) => ({ id, label }))}
+        trailing={visibleTabs.filter(([id]) => id === "settings").map(([id, label]) => ({ id, label }))}
+      />
+
+      <div className="page-actions">
+        <button className="btn" onClick={applyConfig}>Apply</button>
+        <button className="btn" onClick={saveConfig}>Save</button>
+      </div>
 
       <main>
         {activeTab === "info" && (
@@ -552,48 +578,64 @@ export default function App() {
         )}
 
         {activeTab === "live" && (
-          <section className="tabpage active">
-            <div className="telemetry">
-              <div className="metric speed">
-                <span>Speed</span>
-                <strong>{((t?.Speed ?? 0) * 3.6).toFixed(0)}</strong>
-                <small>km/h</small>
-              </div>
-              <div className="metric">
-                <span>Gear</span>
-                <strong>{t?.Gear ?? 0}</strong>
-              </div>
-              <div className="metric">
-                <span>RPM</span>
-                <strong>{(t?.CurrentEngineRpm ?? 0).toFixed(0)}</strong>
-                <small>/ {(t?.EngineMaxRpm ?? 0).toFixed(0)}</small>
-              </div>
-              {isFieldAvailable(game, "RacePosition") ? (
-                <div className="metric">
-                  <span>Race Position</span>
-                  <strong>{t?.RacePosition ?? 0}</strong>
-                  <small>lap {t?.LapNumber ?? 0}</small>
+          <section className="page">
+            {!snapshot?.available ? (
+              <Empty>
+                No telemetry on {config?.listen_addr ?? "0.0.0.0"}:{config?.listen_port ?? 20440}. Start the
+                game — for LMU, launch with the lmu-bridge wrapper so the sidecar runs inside the prefix.
+              </Empty>
+            ) : (
+              <>
+                <div className="row">
+                  <div className="panel" style={{ flex: "none", width: 452, padding: "12px 14px 10px" }}>
+                    <div className="hero">
+                      <div>
+                        <div className="stat-label">SPEED</div>
+                        <div className="hero-value">
+                          <b>{((t?.Speed ?? 0) * 3.6).toFixed(0)}</b>
+                          <span className="unit">km/h</span>
+                        </div>
+                      </div>
+                      <div className="spacer" />
+                      <div style={{ textAlign: "right" }}>
+                        <div className="stat-label">GEAR</div>
+                        <div className="hero-value">
+                          <b>{gearLabel(t, game)}</b>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 5 }}>
+                        <div className="stat-label">RPM</div>
+                        <div style={{ font: "400 11px var(--font-mono)", color: "var(--ink)" }}>
+                          {(t?.CurrentEngineRpm ?? 0).toFixed(0)}{" "}
+                          <span style={{ color: "var(--ink-lo)" }}>/ {(t?.EngineMaxRpm ?? 0).toFixed(0)}</span>
+                        </div>
+                      </div>
+                      <RpmSegments ratio={rpmRatio(t)} />
+                    </div>
+
+                    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <PedalBar label="THROTTLE" kind="throttle" value={(t?.Accel ?? 0) / 255} />
+                      <PedalBar label="BRAKE" kind="brake" value={(t?.Brake ?? 0) / 255} />
+                      <PedalBar label="CLUTCH" kind="clutch" value={(t?.Clutch ?? 0) / 255} />
+                    </div>
+                  </div>
+
+                  <div
+                    className="cell-grid"
+                    style={{ flex: 1, minWidth: 0, gridTemplateColumns: "repeat(4,minmax(0,1fr))", gridAutoRows: "1fr" }}
+                  >
+                    {liveStats(t, game, fuelEstimate).map((stat) => (
+                      <Stat key={stat.label} {...stat} />
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <div className="metric">
-                  <span>Lap</span>
-                  <strong>{t?.LapNumber ?? 0}</strong>
-                </div>
-              )}
-              <div className="barblock">
-                <div className="rpmbar">
-                  <div id="rpmFill" style={{ width: `${rpmRatio(t) * 100}%` }} />
-                </div>
-                <div className="pedals">
-                  <label>Throttle <meter min={0} max={255} value={t?.Accel ?? 0} /></label>
-                  <label>Brake <meter min={0} max={255} value={t?.Brake ?? 0} /></label>
-                  <label>Clutch <meter min={0} max={255} value={t?.Clutch ?? 0} /></label>
-                </div>
-              </div>
-            </div>
-            <div className="charts one">
-              <Chart definition={chartDefinitions.chartLive} history={history} />
-            </div>
+
+                <Chart definition={chartDefinitions.chartLive} history={history} height={260} footer="SPEED km/h · RPM · LAST 60 s" />
+              </>
+            )}
           </section>
         )}
 
@@ -962,7 +1004,7 @@ export default function App() {
           </section>
         )}
       </main>
-    </>
+    </div>
   );
 }
 
@@ -1050,6 +1092,96 @@ function InfoPage({ game, telemetry, meta, source, receivedAt }: {
       </div>
     </section>
   );
+}
+
+// RpmSegments draws the rev counter as discrete segments rather than a bar: at a
+// glance the count of lit segments reads faster than a length, which is the same
+// reason a real dash uses shift lights. The top fifth turns critical because that
+// is the part you act on.
+function RpmSegments({ ratio }: { ratio: number }) {
+  const total = 30;
+  const lit = Math.round(Math.min(1, Math.max(0, ratio)) * total);
+  return (
+    <div className="seg-bar">
+      {Array.from({ length: total }, (_, i) => {
+        let color = "var(--line-soft)";
+        if (i < lit) {
+          const frac = i / total;
+          color = frac > 0.86 ? "var(--sem-crit)" : frac > 0.7 ? "var(--sem-warn)" : "var(--ink-hi)";
+        }
+        return <i key={i} style={{ background: color }} />;
+      })}
+    </div>
+  );
+}
+
+// PedalBar is a labelled 0..1 bar. Throttle/brake/clutch keep fixed colours so
+// the trace and the bar agree with each other.
+function PedalBar({ label, kind, value }: { label: string; kind: string; value: number }) {
+  const pct = Math.round(Math.min(1, Math.max(0, value)) * 100);
+  return (
+    <div className="bar-row">
+      <span>{label}</span>
+      <div className={`bar ${kind}`}>
+        <i style={{ width: `${pct}%` }} />
+      </div>
+      <span className="val">{pct}%</span>
+    </div>
+  );
+}
+
+// liveStats picks the eight readouts worth a permanent cell on the Live page.
+// Anything conditional on the game is filtered here rather than in the markup,
+// so the grid stays a grid.
+function liveStats(
+  t: Record<string, any> | undefined,
+  game: Game,
+  fuel: { perLap: number; lapsLeft: number } | null,
+): { label: string; value: string; unit?: string; note?: string; tone?: StatTone }[] {
+  const out: ReturnType<typeof liveStats> = [];
+  const num = (v: any, digits = 0) => (Number.isFinite(Number(v)) ? Number(v).toFixed(digits) : "—");
+
+  if (isFieldAvailable(game, "RacePosition")) {
+    out.push({ label: "POSITION", value: t?.RacePosition ? `P${t.RacePosition}` : "—", note: `lap ${t?.LapNumber ?? 0}` });
+  } else {
+    out.push({ label: "LAP", value: String(t?.LapNumber ?? 0) });
+  }
+
+  out.push({ label: "LAST LAP", value: lapTime(t?.LastLap), note: "previous" });
+  out.push({ label: "BEST LAP", value: lapTime(t?.BestLap), note: "session", tone: t?.BestLap > 0 ? "best" : "" });
+
+  // Fuel is litres in LMU and a tank fraction in Forza; the estimate only exists
+  // once a lap has been measured.
+  if (fuel) {
+    const tone = fuel.lapsLeft < 2 ? "crit" : fuel.lapsLeft < 4 ? "warn" : "";
+    out.push({ label: "FUEL RANGE", value: num(fuel.lapsLeft, 1), unit: "laps", note: `${num(fuel.perLap, 2)} /lap`, tone });
+  } else {
+    out.push({ label: "FUEL", value: num(t?.Fuel, 1), unit: game === "lmu" ? "L" : "%", note: "no lap measured" });
+  }
+
+  out.push({ label: "WATER", value: num(t?.WaterTemp, 0), unit: "°C" });
+  out.push({ label: "OIL", value: num(t?.OilTemp, 0), unit: "°C" });
+  out.push({ label: "BOOST", value: num(t?.Boost, 1) });
+  out.push({ label: "STEER", value: num(t?.Steer, 0), note: "raw" });
+  return out;
+}
+
+// lapTime renders seconds as m:ss.mmm, or an em dash when there is no lap yet —
+// never 0:00.000, which reads as a real (impossibly fast) time.
+function lapTime(seconds: any): string {
+  const v = Number(seconds);
+  if (!Number.isFinite(v) || v <= 0) return "—";
+  const m = Math.floor(v / 60);
+  return `${m}:${(v - m * 60).toFixed(3).padStart(6, "0")}`;
+}
+
+// gearLabel renders the gear the way the driver reads it. Forza reports 0 for
+// reverse and neutral one past the top gear, so a raw number is wrong twice.
+function gearLabel(t: Record<string, any> | undefined, game: Game): string {
+  const g = Number(t?.Gear ?? 0);
+  if (game === "lmu") return g === 0 ? "R" : g === 1 ? "N" : String(g - 1);
+  if (g === 0) return "R";
+  return String(g);
 }
 
 // FuelEstimate shows the projected laps of fuel remaining (estimated from

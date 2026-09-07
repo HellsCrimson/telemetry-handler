@@ -10,7 +10,8 @@
 import { useEffect, useState } from "react";
 import { Service } from "../../bindings/telemetry-handler/app";
 import "./strategy.css";
-import { type SessionState } from "./model";
+import { type SessionState, type CarState, formatLapTime } from "./model";
+import { AppHeader, ContextBar, TabBar, Empty, type Fact } from "../design/Shell";
 import { useSettings } from "./useSettings";
 import RacePopups from "./components/RacePopups";
 import TrackCircle from "./components/TrackCircle";
@@ -45,6 +46,49 @@ const TABS = [
 
 const POLL_MS = 200;
 
+// contextFacts is the one-line answer to "where are we in this race", shown in
+// the bar under the header on every strategy tab.
+function contextFacts(state: SessionState | null, player?: CarState): Fact[] {
+  if (!state?.available) return [];
+  const facts: Fact[] = [];
+  if (player) {
+    facts.push({ label: "LAP", value: state.max_laps > 0 ? `${player.total_laps + 1}/${state.max_laps}` : String(player.total_laps + 1) });
+    facts.push({ label: "POS", value: player.place ? `P${player.place}` : "—" });
+    if (player.last_lap > 0) facts.push({ label: "LAST", value: formatLapTime(player.last_lap) });
+  }
+  if (state.session_end_time > state.session_time) {
+    facts.push({ label: "REMAIN", value: clock(state.session_end_time - state.session_time) });
+  }
+  facts.push({ label: "AIR", value: `${state.weather.ambient_temp.toFixed(1)}°` });
+  facts.push({ label: "TRACK", value: `${state.weather.track_temp.toFixed(1)}°` });
+  facts.push({ label: "RAIN", value: `${(state.weather.raining * 100).toFixed(0)}%` });
+  return facts;
+}
+
+// flagBanner surfaces race control in the context bar — the one place a filled
+// colour bar is warranted, because a yellow you missed is a penalty.
+function flagBanner(state: SessionState | null): { kind: "fcy" | "red"; text: string } | null {
+  if (!state?.available) return null;
+  if (state.flags.sc_active) return { kind: "fcy", text: "SAFETY CAR DEPLOYED" };
+  if (state.flags.yellow) return { kind: "fcy", text: "YELLOW FLAG" };
+  return null;
+}
+
+function clock(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function sessionKind(t: number): string {
+  if (t >= 10) return "RACE";
+  if (t >= 5) return "QUALIFYING";
+  if (t >= 1) return "PRACTICE";
+  return "TEST DAY";
+}
+
 export default function StrategyApp({ onExit }: { onExit: () => void }) {
   const [activeTab, setActiveTab] = useState<string>("strategy");
   const [state, setState] = useState<SessionState | null>(null);
@@ -68,33 +112,42 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
 
   const available = !!state?.available;
 
+  const player = state ? state.cars.find((c) => c.is_player) : undefined;
+  const flag = flagBanner(state);
+
   return (
-    <div className="strategy">
-      <header className="topbar">
-        <div>
-          <h1>Strategy Planner</h1>
-          <p id="status" data-level={available ? "normal" : "error"}>
-            {available ? `${state?.track || "Session"} · ${state?.cars.length ?? 0} cars` : "Waiting for Le Mans Ultimate telemetry…"}
-          </p>
-        </div>
-        <div className="actions">
-          <button className="secondary" onClick={onExit}>Dashboard</button>
-        </div>
-      </header>
+    <div className="app-shell strategy">
+      <AppHeader
+        mode="strategy"
+        onMode={(m) => m === "dashboard" && onExit()}
+        source={available ? { label: "LMU · LIVE", rate: `${state?.cars.length ?? 0} cars` } : null}
+      />
+
+      <ContextBar
+        title={state?.track || undefined}
+        kind={available ? sessionKind(state?.session_type ?? 0) : undefined}
+        facts={contextFacts(state, player)}
+        flag={flag}
+      />
 
       {state && <RacePopups flags={state.flags} />}
 
-      <nav className="tabs" aria-label="Strategy sections">
-        {TABS.map(([id, label]) => (
-          <button key={id} className={`tab${activeTab === id ? " active" : ""}`} onClick={() => setActiveTab(id)}>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <TabBar
+        label="Strategy sections"
+        active={activeTab}
+        onSelect={setActiveTab}
+        tabs={TABS.filter(([id]) => id !== "settings").map(([id, label]) => ({ id, label }))}
+        trailing={TABS.filter(([id]) => id === "settings").map(([id, label]) => ({ id, label }))}
+      />
 
       <main>
         {!available && activeTab !== "history" && activeTab !== "settings" && activeTab !== "setup" && (
-          <p className="muted">No live session. Start Le Mans Ultimate (with the lmu-bridge sidecar) or replay an LMU recording.</p>
+          <div className="page">
+            <Empty>
+              No live session. Start Le Mans Ultimate with the lmu-bridge wrapper so the
+              sidecar runs inside the Proton prefix, or replay an LMU recording.
+            </Empty>
+          </div>
         )}
 
         {available && state && activeTab === "live" && <LiveData state={state} />}

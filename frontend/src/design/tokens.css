@@ -1,0 +1,100 @@
+/* Design tokens — the single source for colour, type, space and density.
+ *
+ * Ported from the Claude Design system ("telemetry-handler — visual system").
+ * Every screen is expected to reach for these rather than literal values: the
+ * whole point of the redesign is that the remaining tabs become an application
+ * of this file, not eighteen separate judgement calls.
+ *
+ * Two rules worth keeping in mind while extending it:
+ *   - Neutrals sit on hue 250 at chroma <= 0.010. Cool enough to read as
+ *     instrument grey next to a warm game image, flat enough that no hue in the
+ *     chrome competes with the data.
+ *   - Semantic colour is the exception, not the default. A nominal value stays
+ *     ink grey; colour means something is worth looking at. That is what makes
+ *     the screen glanceable, and it is the first thing lost if colour creeps
+ *     into buttons and headings.
+ */
+
+:root {
+  /* 01 · Surfaces & ink ---------------------------------------------------- */
+  --bg-app: #0b0d10; /* window ground */
+  --bg-panel: #12151a; /* panel, table row */
+  --bg-inset: #0e1116; /* header, chart well, tyre cell */
+  --bg-row-alt: #14171d; /* zebra row */
+  --bg-row-hover: #1b2028; /* row hover / my car */
+  --line: #232830; /* panel + section hairline */
+  --line-soft: #171b21; /* row hairline */
+  --line-strong: #2e343e; /* focus, dashed empty, chip border */
+  --ink-hi: #e8ebef; /* primary value, active tab */
+  --ink: #b9c0ca; /* table body, secondary value */
+  --ink-mid: #7c8593; /* inactive tab, panel label */
+  --ink-lo: #565e6b; /* micro label, unit, axis */
+  --ink-faint: #3f4753; /* disabled, absent data */
+
+  /* 02 · Semantic ramp ----------------------------------------------------- */
+  /* Six hues in one lightness band (0.68–0.83), so no single state shouts over
+   * another. Violet is spent entirely on session-best — never on chrome. */
+  --sem-cold: oklch(0.72 0.13 240); /* cold tyre, hard compound, blue flag */
+  --sem-cool: oklch(0.78 0.11 205); /* below window, ERS, wet compound */
+  --sem-good: oklch(0.78 0.15 152); /* in window, gaining, personal best */
+  --sem-warn: oklch(0.83 0.14 82); /* fuel short, FCY, off pace, in pit */
+  --sem-crit: oklch(0.68 0.18 25); /* overheat, red flag, recording */
+  --sem-best: oklch(0.72 0.15 305); /* session best — nothing else, ever */
+
+  /* Tinted grounds for status chips, so a chip reads as its state without a
+   * saturated fill competing with the data behind it. */
+  --sem-good-bg: #131a17;
+  --sem-good-line: #1f3129;
+  --sem-crit-bg: #1c1315;
+  --sem-crit-line: #33201f;
+  --sem-warn-bg: #1a1710;
+  --sem-warn-line: #33291a;
+
+  /* 03 · Type -------------------------------------------------------------- */
+  /* Mono carries every number, timestamp, unit and code-like token; Sans carries
+   * labels, prose and chrome. Mixing them is how a value stays scannable in a
+   * column even when the label beside it is a sentence. */
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+
+  --t-readout-xl: 500 64px/0.92 var(--font-mono); /* hero speed / gear */
+  --t-readout-l: 500 34px/1 var(--font-mono);
+  --t-readout-m: 500 22px/1 var(--font-mono); /* stat cell value */
+  --t-readout-s: 500 16px/1 var(--font-mono);
+  --t-data: 400 11.5px/1.3 var(--font-mono); /* table body */
+  --t-ui: 400 11.5px/1.5 var(--font-sans); /* tabs, names, prose */
+  --t-label: 600 10px/1 var(--font-mono); /* panel label, +.09em */
+  --t-micro: 500 9.5px/1 var(--font-mono); /* column head, +.07em */
+  --ls-label: 0.09em;
+  --ls-micro: 0.07em;
+
+  /* 04 · Space & density --------------------------------------------------- */
+  --s-1: 2px; /* segment gaps, wear bars */
+  --s-2: 4px; /* chip padding, bar heights */
+  --s-3: 6px; /* chart inset, label→value */
+  --s-4: 8px; /* table column gutter */
+  --s-5: 10px; /* panel head padding */
+  --s-6: 12px; /* panel body padding */
+  --s-7: 14px; /* layout gap, screen padding */
+  --s-8: 18px; /* readout cluster gap */
+
+  /* Fixed heights. These are what keep the chrome from drifting screen to
+   * screen; a tab bar that is 36px everywhere disappears, one that is 34px on
+   * one page announces itself. */
+  --h-header: 48px;
+  --h-context: 32px;
+  --h-tabs: 36px;
+  --h-panel-head: 28px;
+  --h-row: 28px;
+  --h-row-compact: 24px;
+
+  --radius: 3px; /* panels */
+  --radius-inner: 2px; /* inner elements */
+}
+
+/* The app is dark by design — it sits beside a running game, usually at night —
+ * so the surface ramp is the only theme. Declaring the scheme stops the webview
+ * painting white behind a slow first render. */
+:root {
+  color-scheme: dark;
+}
