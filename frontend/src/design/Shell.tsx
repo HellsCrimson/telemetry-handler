@@ -5,6 +5,7 @@
 // that makes an app feel assembled rather than designed.
 
 import type { ReactNode } from "react";
+import { UI_SCALES, useUIScale } from "./useUIScale";
 
 export type Mode = "dashboard" | "strategy";
 
@@ -63,8 +64,48 @@ export function AppHeader({ version, mode, onMode, source, recording, children }
           <span>REC {recording}</span>
         </div>
       )}
+
+      <ScalePicker />
     </header>
   );
+}
+
+/** Interface magnification. It lives in the header rather than buried in
+ *  Settings because it is the first thing someone reaches for on a display the
+ *  density was not drawn for, and a Ctrl+/- shortcut nobody knows about is not
+ *  a fix. */
+function ScalePicker() {
+  const { scale, setScale } = useUIScale();
+  return (
+    <div className="select scale-picker" title="Interface scale (Ctrl + / Ctrl −)">
+      <select
+        value={nearestScale(scale)}
+        aria-label="Interface scale"
+        onChange={(e) => setScale(Number(e.target.value))}
+      >
+        {UI_SCALES.map((v) => (
+          <option key={v} value={v}>
+            {Math.round(v * 100)}%
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/** nearestScale maps an arbitrary saved value onto the nearest offered step, so
+ *  a number hand-edited into config.json still shows a selected option. */
+function nearestScale(value: number): number {
+  let best = UI_SCALES[0];
+  let dist = Infinity;
+  for (const v of UI_SCALES) {
+    const d = Math.abs(v - value);
+    if (d < dist) {
+      dist = d;
+      best = v;
+    }
+  }
+  return best;
 }
 
 export interface Fact {

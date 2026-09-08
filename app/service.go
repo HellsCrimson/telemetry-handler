@@ -86,6 +86,11 @@ type Service struct {
 	overlay *overlay.Manager
 	ctx     context.Context
 
+	// window is the dashboard webview, needed to change its magnification. Set by
+	// main once the window exists; nil in tests and headless runs, where the
+	// scale bindings degrade to persisting the value without applying it.
+	window Zoomable
+
 	// lmuClient talks to LMU's local REST API. It is created at startup when LMU
 	// polling is enabled and shared by the poller and the on-demand setup bindings;
 	// nil when LMU polling is disabled.
@@ -130,6 +135,47 @@ func NewService(runtime *Runtime) *Service {
 		runtime: runtime,
 		overlay: overlay.NewManager(),
 	}
+}
+
+// Zoomable is the slice of the Wails window the scale bindings need. Declaring
+// it here rather than taking the concrete window keeps app/ testable without a
+// GUI, and documents that this is the only window capability the service uses.
+type Zoomable interface {
+	SetZoom(magnification float64) application.Window
+}
+
+// SetWindow hands the service the dashboard window so UI scale can be applied.
+func (s *Service) SetWindow(w Zoomable) { s.window = w }
+
+// GetUIScale returns the current webview magnification.
+func (s *Service) GetUIScale() float64 {
+	return s.runtime.Config().UIScaleValue()
+}
+
+// SetUIScale magnifies the whole interface and persists the choice.
+//
+// This is webview zoom rather than a CSS type scale on purpose: the layout is
+// built on a deliberate set of fixed heights and 9.5px labels whose proportions
+// only hold together if everything scales at once. It is also crisper, since the
+// webview re-rasterises text rather than scaling a bitmap.
+func (s *Service) SetUIScale(scale float64) (float64, error) {
+	cfg := s.runtime.Config()
+	cfg.UIScale = scale
+	applied := cfg.UIScaleValue()
+	cfg.UIScale = applied
+
+	if s.window != nil {
+		s.window.SetZoom(applied)
+	}
+	if err := s.runtime.ApplyConfig(cfg); err != nil {
+		return applied, err
+	}
+	// Persisted, because a display preference that resets every launch is worse
+	// than no preference at all.
+	if err := s.runtime.SaveConfig(cfg); err != nil {
+		return applied, err
+	}
+	return applied, nil
 }
 
 func (s *Service) ServiceName() string {
@@ -1021,4 +1067,21 @@ func (s *Service) GetMonitorInfo() MonitorInfo {
 // output dropdown (empty when enumeration is unavailable, e.g. non-Hyprland).
 func (s *Service) ListMonitors() []string {
 	return overlay.Monitors()
+}
+
+// ReadMozaBase reads the wheelbase's stored settings and temperatures.
+//
+// Read-only by design: this is the surface that proves the protocol against real
+// hardware, and lets the command registry's provisional ranges be compared with
+// Boxflat and Pit House, before the app writes anything to a device that stores
+// what it is told. Writes arrive in a later milestone behind their own switch.
+func (s *Service) ReadMozaBase() MozaBaseSnapshot {
+	return s.runtime.ReadMozaBase()
+}
+
+// MozaBaseCommands returns the wheelbase setting definitions — key, label, unit,
+// range — so the dashboard builds its controls from the same source that
+// validates the values.
+func (s *Service) MozaBaseCommands() []MozaBaseCommand {
+	return s.runtime.MozaBaseCommands()
 }

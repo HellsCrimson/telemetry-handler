@@ -488,3 +488,20 @@
   font-weight: 400;
   color: var(--ink);
 }
+
+/* The header's scale picker: a select trimmed to fit the 48px chrome without
+ * competing with the status chips beside it. */
+.scale-picker {
+  height: 24px;
+  flex: none;
+  background: var(--bg-panel);
+}
+
+.scale-picker select {
+  padding: 0 20px 0 7px;
+  font: 400 10px var(--font-mono);
+  color: var(--ink-mid);
+}
+
+.scale-picker:hover select { color: var(--ink); }
+.scale-picker::after { right: 6px; }

@@ -9,10 +9,16 @@ export {
 export {
     ConfigStatus,
     MonitorInfo,
+    MozaBaseCommand,
+    MozaBaseSnapshot,
     MozaStatus,
     OverlayStatus,
     ReplaySample,
     TelemetryMeta,
     TelemetrySnapshot,
     VoiceTestResult
+} from "./models.js";
+
+export type {
+    Zoomable
 } from "./models.js";

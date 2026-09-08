@@ -23,6 +23,7 @@ import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
 import { CurveEditor, presetCurve } from "./CurveEditor";
 import StrategyApp from "./strategy/StrategyApp";
 import { AppHeader, ContextBar, TabBar, Stat, Empty, type StatTone } from "./design/Shell";
+import BasePanel from "./moza/BasePanel";
 
 const HISTORY_MS = 120000;
 
@@ -750,6 +751,13 @@ export default function App() {
 
         {activeTab === "moza" && config && (
           <section className="tabpage active">
+            {/* Wheelbase configuration, read-only for now — see
+                docs/moza-boxflat-wheelbase-config/README.md. It sits above the
+                existing LED controls because both belong to one MOZA area, even
+                though they are separate modules internally. */}
+            <div className="page" style={{ padding: 0, marginBottom: "var(--s-7)" }}>
+              <BasePanel />
+            </div>
             <div className="settings">
               <div className="panel">
                 <h2>MOZA Output</h2>

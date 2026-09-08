@@ -198,6 +198,13 @@ export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
 }
 
 /**
+ * GetUIScale returns the current webview magnification.
+ */
+export function GetUIScale(): $CancellablePromise<number> {
+    return $Call.ByID(699124678);
+}
+
+/**
  * LearnVoiceButton listens across the system's input devices and returns the
  * first button/key pressed, so the dashboard can capture a wheel-rim button for
  * the voice push-to-talk trigger without the user knowing its evdev code. It
@@ -245,13 +252,38 @@ export function ListSessions(): $CancellablePromise<store$0.SessionRow[]> {
     });
 }
 
+/**
+ * MozaBaseCommands returns the wheelbase setting definitions — key, label, unit,
+ * range — so the dashboard builds its controls from the same source that
+ * validates the values.
+ */
+export function MozaBaseCommands(): $CancellablePromise<$models.MozaBaseCommand[]> {
+    return $Call.ByID(504343740).then(($result: any) => {
+        return $$createType30($result);
+    });
+}
+
 export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
     return $Call.ByID(3815721487, moza);
 }
 
+/**
+ * ReadMozaBase reads the wheelbase's stored settings and temperatures.
+ * 
+ * Read-only by design: this is the surface that proves the protocol against real
+ * hardware, and lets the command registry's provisional ranges be compared with
+ * Boxflat and Pit House, before the app writes anything to a device that stores
+ * what it is told. Writes arrive in a later milestone behind their own switch.
+ */
+export function ReadMozaBase(): $CancellablePromise<$models.MozaBaseSnapshot> {
+    return $Call.ByID(2327856366).then(($result: any) => {
+        return $$createType31($result);
+    });
+}
+
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType33($result);
     });
 }
 
@@ -296,6 +328,25 @@ export function SetSetupValue(key: string, value: number): $CancellablePromise<v
     return $Call.ByID(1509525744, key, value);
 }
 
+/**
+ * SetUIScale magnifies the whole interface and persists the choice.
+ * 
+ * This is webview zoom rather than a CSS type scale on purpose: the layout is
+ * built on a deliberate set of fixed heights and 9.5px labels whose proportions
+ * only hold together if everything scales at once. It is also crisper, since the
+ * webview re-rasterises text rather than scaling a bitmap.
+ */
+export function SetUIScale(scale: number): $CancellablePromise<number> {
+    return $Call.ByID(2821314658, scale);
+}
+
+/**
+ * SetWindow hands the service the dashboard window so UI scale can be applied.
+ */
+export function SetWindow(w: $models.Zoomable): $CancellablePromise<void> {
+    return $Call.ByID(3104073146, w);
+}
+
 export function StartRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(982748349).then(($result: any) => {
         return $$createType15($result);
@@ -325,7 +376,7 @@ export function TestMozaLights(): $CancellablePromise<void> {
  */
 export function TestVoiceTTS(v: config$0.Voice): $CancellablePromise<$models.VoiceTestResult> {
     return $Call.ByID(2174446089, v).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType34($result);
     });
 }
 
@@ -359,6 +410,9 @@ const $$createType25 = recording$0.Info.createFrom;
 const $$createType26 = $Create.Array($$createType25);
 const $$createType27 = store$0.SessionRow.createFrom;
 const $$createType28 = $Create.Array($$createType27);
-const $$createType29 = $models.ReplaySample.createFrom;
+const $$createType29 = $models.MozaBaseCommand.createFrom;
 const $$createType30 = $Create.Array($$createType29);
-const $$createType31 = $models.VoiceTestResult.createFrom;
+const $$createType31 = $models.MozaBaseSnapshot.createFrom;
+const $$createType32 = $models.ReplaySample.createFrom;
+const $$createType33 = $Create.Array($$createType32);
+const $$createType34 = $models.VoiceTestResult.createFrom;

@@ -39,6 +39,9 @@ func main() {
 	mozaDuration := flag.Duration("moza-test-duration", 10*time.Second, "duration for -moza-test")
 	mozaLEDProbe := flag.Bool("moza-led-probe", false, "light each rev-light segment one at a time to identify the rim's LED layout, then exit")
 	mozaLEDProbeHold := flag.Duration("moza-led-probe-hold", 600*time.Millisecond, "how long to hold each segment during -moza-led-probe")
+	mozaBaseRead := flag.Bool("moza-base-read", false, "read every wheelbase setting and print it, then exit (writes nothing)")
+	mozaBaseProbe := flag.String("moza-base-probe", "", "write-test one wheelbase setting: read it, write a lower value, read it back, restore. Takes a setting key, e.g. ffb_strength")
+	mozaBaseProbeTo := flag.Int("moza-base-probe-to", -1, "target value for -moza-base-probe; must be BELOW the current value (default: half of it)")
 	mozaProtocol := flag.String("moza-protocol", "auto", "rim LED protocol for -moza-test/-moza-led-probe: \"auto\" (detect), \"old\" (legacy rims), or \"new\" (ESX and other newer rims)")
 	voiceListen := flag.Bool("voice-listen", false, "record from the mic, transcribe on the voice server, and dry-run the pit plan (no trigger, applies nothing), then exit")
 	voiceSpeak := flag.String("voice-speak", "", "synthesize a phrase on the voice server and play it, then exit")
@@ -95,6 +98,12 @@ func main() {
 
 	// Voice bring-up harness: headless, exercises one stage and exits. Applies
 	// nothing (the pit plan is a dry run) — see voicecli.go.
+	if *mozaBaseRead || *mozaBaseProbe != "" {
+		if err := runMozaBase(cfg, *mozaPort, *mozaBaseProbe, *mozaBaseProbeTo); err != nil {
+			log.Fatalf("moza base: %v", err)
+		}
+		return
+	}
 	if *voiceMenu {
 		if err := dumpPitMenu(cfg); err != nil {
 			log.Fatalf("voice menu: %v", err)
@@ -154,13 +163,23 @@ func main() {
 		},
 	})
 
-	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Telemetry Handler",
 		Width:            1280,
 		Height:           860,
 		BackgroundColour: application.NewRGB(10, 13, 16),
 		URL:              "/",
 	})
+
+	// The interface is drawn at a deliberate density that reads correctly at
+	// 1080p and small on a 1440p or 4K panel, so the saved magnification is
+	// applied to the webview — see Service.SetUIScale. Before Run the window has
+	// no platform impl yet, so SetZoom only records the option, which is exactly
+	// what the window picks up when it is created.
+	service.SetWindow(window)
+	if scale := cfg.UIScaleValue(); scale != 1 {
+		window.SetZoom(scale)
+	}
 
 	// If the config failed to load, pop a native error dialog once the app is up
 	// (the window/event loop must be running before a dialog can be shown). Run

@@ -82,6 +82,180 @@ export class MonitorInfo {
 }
 
 /**
+ * MozaBaseCommand is one wheelbase setting's metadata, as the frontend needs it.
+ * It mirrors moza.BaseCommand rather than exposing it directly, so the wire type
+ * stays stable if the internal one gains fields.
+ */
+export class MozaBaseCommand {
+    "key": string;
+    "name": string;
+    "unit": string;
+    "min": number;
+    "max": number;
+    "kind": string;
+    "labels": string[];
+
+    /**
+     * Safety marks the settings written first by a grouped apply, so the UI can
+     * group them together as the safety envelope.
+     */
+    "safety": boolean;
+
+    /**
+     * Verified is false while a command's range and scaling are still taken from
+     * Boxflat's database rather than confirmed on this hardware. The UI should
+     * say so rather than presenting a guess as fact.
+     */
+    "verified": boolean;
+    "note": string;
+
+    /** Creates a new MozaBaseCommand instance. */
+    constructor($$source: Partial<MozaBaseCommand> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("unit" in $$source)) {
+            this["unit"] = "";
+        }
+        if (!("min" in $$source)) {
+            this["min"] = 0;
+        }
+        if (!("max" in $$source)) {
+            this["max"] = 0;
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("labels" in $$source)) {
+            this["labels"] = [];
+        }
+        if (!("safety" in $$source)) {
+            this["safety"] = false;
+        }
+        if (!("verified" in $$source)) {
+            this["verified"] = false;
+        }
+        if (!("note" in $$source)) {
+            this["note"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MozaBaseCommand instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MozaBaseCommand {
+        const $$createField6_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("labels" in $$parsedSource) {
+            $$parsedSource["labels"] = $$createField6_0($$parsedSource["labels"]);
+        }
+        return new MozaBaseCommand($$parsedSource as Partial<MozaBaseCommand>);
+    }
+}
+
+/**
+ * MozaBaseSnapshot is the read-only view of the wheelbase's stored configuration
+ * that the dashboard renders: what the device currently holds, what it declined
+ * to answer, and its temperatures.
+ * 
+ * Values are keyed by the command keys in moza.BaseCommands(), which is also
+ * where their ranges, units and labels live — so the frontend builds its controls
+ * from the same source that validates the writes, and cannot offer a value the
+ * hardware would reject.
+ */
+export class MozaBaseSnapshot {
+    /**
+     * Available is false when there is no wheelbase to talk to. The rest of the
+     * struct is then empty and Reason says why, so the page can explain itself
+     * rather than showing a grid of zeroes.
+     */
+    "available": boolean;
+    "reason": string;
+    "settings": { [_ in string]?: number };
+
+    /**
+     * Temps are degrees Celsius. The base reports hundredths of a degree; the
+     * conversion happens in moza so every consumer sees the same units.
+     */
+    "temps": { [_ in string]?: number };
+
+    /**
+     * State and Error are the base's raw state words, shown when the base
+     * answered them. Their values are not decoded yet, but a non-zero error is
+     * worth surfacing before we can name it.
+     */
+    "state": number;
+    "error": number;
+    "has_state": boolean;
+    "has_error": boolean;
+
+    /**
+     * Unsupported names commands this base did not answer. They are shown as
+     * unavailable rather than as a value, because an older base legitimately
+     * implements only part of the command set.
+     */
+    "unsupported": { [_ in string]?: boolean };
+
+    /** Creates a new MozaBaseSnapshot instance. */
+    constructor($$source: Partial<MozaBaseSnapshot> = {}) {
+        if (!("available" in $$source)) {
+            this["available"] = false;
+        }
+        if (!("reason" in $$source)) {
+            this["reason"] = "";
+        }
+        if (!("settings" in $$source)) {
+            this["settings"] = {};
+        }
+        if (!("temps" in $$source)) {
+            this["temps"] = {};
+        }
+        if (!("state" in $$source)) {
+            this["state"] = 0;
+        }
+        if (!("error" in $$source)) {
+            this["error"] = 0;
+        }
+        if (!("has_state" in $$source)) {
+            this["has_state"] = false;
+        }
+        if (!("has_error" in $$source)) {
+            this["has_error"] = false;
+        }
+        if (!("unsupported" in $$source)) {
+            this["unsupported"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MozaBaseSnapshot instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MozaBaseSnapshot {
+        const $$createField2_0 = $$createType1;
+        const $$createField3_0 = $$createType2;
+        const $$createField8_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("settings" in $$parsedSource) {
+            $$parsedSource["settings"] = $$createField2_0($$parsedSource["settings"]);
+        }
+        if ("temps" in $$parsedSource) {
+            $$parsedSource["temps"] = $$createField3_0($$parsedSource["temps"]);
+        }
+        if ("unsupported" in $$parsedSource) {
+            $$parsedSource["unsupported"] = $$createField8_0($$parsedSource["unsupported"]);
+        }
+        return new MozaBaseSnapshot($$parsedSource as Partial<MozaBaseSnapshot>);
+    }
+}
+
+/**
  * MozaStatus reports the MOZA wheel's live state to the dashboard (polled like
  * the overlay/recording status). Enabled is the config intent; Connected is
  * whether a driver is actually open. Model/Serial/RPMLEDs are populated from USB
@@ -205,8 +379,8 @@ export class ReplaySample {
      * Creates a new ReplaySample instance from a string or object.
      */
     static createFrom($$source: any = {}): ReplaySample {
-        const $$createField1_0 = $$createType0;
-        const $$createField3_0 = $$createType1;
+        const $$createField1_0 = $$createType4;
+        const $$createField3_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("telemetry" in $$parsedSource) {
             $$parsedSource["telemetry"] = $$createField1_0($$parsedSource["telemetry"]);
@@ -329,8 +503,8 @@ export class TelemetrySnapshot {
      * Creates a new TelemetrySnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): TelemetrySnapshot {
-        const $$createField0_0 = $$createType0;
-        const $$createField4_0 = $$createType1;
+        const $$createField0_0 = $$createType4;
+        const $$createField4_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("telemetry" in $$parsedSource) {
             $$parsedSource["telemetry"] = $$createField0_0($$parsedSource["telemetry"]);
@@ -371,6 +545,17 @@ export class VoiceTestResult {
     }
 }
 
+/**
+ * Zoomable is the slice of the Wails window the scale bindings need. Declaring
+ * it here rather than taking the concrete window keeps app/ testable without a
+ * GUI, and documents that this is the only window capability the service uses.
+ */
+export type Zoomable = any;
+
 // Private type creation functions
-const $$createType0 = forza$0.Telemetry.createFrom;
-const $$createType1 = TelemetryMeta.createFrom;
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = $Create.Map($Create.Any, $Create.Any);
+const $$createType2 = $Create.Map($Create.Any, $Create.Any);
+const $$createType3 = $Create.Map($Create.Any, $Create.Any);
+const $$createType4 = forza$0.Telemetry.createFrom;
+const $$createType5 = TelemetryMeta.createFrom;

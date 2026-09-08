@@ -18,6 +18,14 @@ export class Config {
     "lmu": LMU;
     "voice": Voice;
 
+    /**
+     * UIScale magnifies the dashboard webview. The interface is drawn at a
+     * deliberate density (9.5px micro labels, 28px table rows), which is right at
+     * 1080p and small on a 1440p or 4K panel — so this scales the whole thing
+     * rather than letting individual type sizes drift apart.
+     */
+    "ui_scale"?: number;
+
     /** Creates a new Config instance. */
     constructor($$source: Partial<Config> = {}) {
         if (!("listen_addr" in $$source)) {

@@ -48,6 +48,10 @@ const (
 	defaultEngineerTimeout     = 30.0
 	defaultEngineerMaxTokens   = 220
 	defaultEngineerTemperature = 0.3
+	// UI scale bounds. Below 0.7 the 9.5px labels stop being legible at all;
+	// above 2.0 the dense tables no longer fit a screen, which defeats them.
+	minUIScale = 0.7
+	maxUIScale = 2.0
 )
 
 type Color [3]uint8
@@ -62,6 +66,21 @@ type Config struct {
 	Overlay    Overlay   `json:"overlay"`
 	LMU        LMU       `json:"lmu"`
 	Voice      Voice     `json:"voice"`
+
+	// UIScale magnifies the dashboard webview. The interface is drawn at a
+	// deliberate density (9.5px micro labels, 28px table rows), which is right at
+	// 1080p and small on a 1440p or 4K panel — so this scales the whole thing
+	// rather than letting individual type sizes drift apart.
+	UIScale float64 `json:"ui_scale,omitempty"`
+}
+
+// UIScaleValue returns the webview magnification to apply, clamped to something
+// usable. 0 (an old config, or an unset field) means 1.0.
+func (c Config) UIScaleValue() float64 {
+	if c.UIScale <= 0 {
+		return 1
+	}
+	return min(max(c.UIScale, minUIScale), maxUIScale)
 }
 
 // Voice configures the push-to-talk voice-command assistant (streaming STT +
@@ -434,6 +453,9 @@ func (c Config) Validate() error {
 	}
 	if c.LMU.Enabled && c.LMU.PollHz <= 0 {
 		return fmt.Errorf("lmu.poll_hz must be greater than 0")
+	}
+	if c.UIScale != 0 && (c.UIScale < minUIScale || c.UIScale > maxUIScale) {
+		return fmt.Errorf("ui_scale must be between %.1f and %.1f", minUIScale, maxUIScale)
 	}
 	if err := c.Voice.Validate(); err != nil {
 		return err

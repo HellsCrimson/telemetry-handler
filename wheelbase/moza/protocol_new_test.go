@@ -13,8 +13,12 @@ func TestParseProtocol(t *testing.T) {
 		"auto": ProtocolAuto,
 		"AUTO": ProtocolAuto,
 		"old":  ProtocolOld,
-		"":     ProtocolOld,
-		"junk": ProtocolOld,
+		// An unset or unrecognised setting auto-detects rather than assuming a
+		// legacy rim: rim autodetection (commit 264c798) made that the sensible
+		// default, and it is what the -moza-protocol flag documents. This test
+		// previously encoded the older "default to old" contract.
+		"":     ProtocolAuto,
+		"junk": ProtocolAuto,
 	}
 	for in, want := range cases {
 		if got := ParseProtocol(in); got != want {

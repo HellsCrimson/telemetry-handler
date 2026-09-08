@@ -847,3 +847,130 @@ func mozaCurveFromConfig(cfg config.Moza) moza.RPMCurve {
 	}
 	return moza.RPMCurve{Points: pts}
 }
+
+// MozaBaseSnapshot is the read-only view of the wheelbase's stored configuration
+// that the dashboard renders: what the device currently holds, what it declined
+// to answer, and its temperatures.
+//
+// Values are keyed by the command keys in moza.BaseCommands(), which is also
+// where their ranges, units and labels live — so the frontend builds its controls
+// from the same source that validates the writes, and cannot offer a value the
+// hardware would reject.
+type MozaBaseSnapshot struct {
+	// Available is false when there is no wheelbase to talk to. The rest of the
+	// struct is then empty and Reason says why, so the page can explain itself
+	// rather than showing a grid of zeroes.
+	Available bool           `json:"available"`
+	Reason    string         `json:"reason"`
+	Settings  map[string]int `json:"settings"`
+	// Temps are degrees Celsius. The base reports hundredths of a degree; the
+	// conversion happens in moza so every consumer sees the same units.
+	Temps map[string]float64 `json:"temps"`
+	// State and Error are the base's raw state words, shown when the base
+	// answered them. Their values are not decoded yet, but a non-zero error is
+	// worth surfacing before we can name it.
+	State    int  `json:"state"`
+	Error    int  `json:"error"`
+	HasState bool `json:"has_state"`
+	HasError bool `json:"has_error"`
+	// Unsupported names commands this base did not answer. They are shown as
+	// unavailable rather than as a value, because an older base legitimately
+	// implements only part of the command set.
+	Unsupported map[string]bool `json:"unsupported"`
+}
+
+// ReadMozaBase reads the wheelbase's stored settings and status.
+//
+// It writes nothing. This is the milestone-2 surface: it proves the framing and
+// checksums against real hardware, and lets the provisional ranges in the command
+// registry be checked against Boxflat and Pit House, before anything is written
+// to a device that stores what it is told.
+//
+// The read borrows the LED driver's connection when one is open, so a settings
+// exchange can never interleave with a rev-light write; see moza.WithBase.
+func (r *Runtime) ReadMozaBase() MozaBaseSnapshot {
+	r.mu.RLock()
+	driver, port := r.moza, r.mozaDevice.Port
+	if port == "" {
+		port = r.cfg.Moza.Port
+	}
+	r.mu.RUnlock()
+
+	if driver == nil && port == "" {
+		return MozaBaseSnapshot{Reason: "No MOZA serial port configured or detected."}
+	}
+
+	snap := MozaBaseSnapshot{
+		Settings:    map[string]int{},
+		Temps:       map[string]float64{},
+		Unsupported: map[string]bool{},
+	}
+	err := moza.WithBase(driver, port, func(c *moza.BaseClient) error {
+		settings, err := c.ReadAllSettings()
+		if err != nil {
+			return err
+		}
+		snap.Settings = settings.Values
+		snap.Unsupported = settings.Unsupported
+
+		// Status is best-effort: the ids are unconfirmed, and a base that answers
+		// none of them still has perfectly good settings worth showing.
+		if status, err := c.ReadStatus(); err == nil {
+			snap.Temps = status.Temps
+			snap.State, snap.HasState = status.State, status.HasState
+			snap.Error, snap.HasError = status.Error, status.HasError
+			for key := range status.Unsupported {
+				snap.Unsupported[key] = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return MozaBaseSnapshot{Reason: err.Error()}
+	}
+	snap.Available = true
+	return snap
+}
+
+// MozaBaseCommand is one wheelbase setting's metadata, as the frontend needs it.
+// It mirrors moza.BaseCommand rather than exposing it directly, so the wire type
+// stays stable if the internal one gains fields.
+type MozaBaseCommand struct {
+	Key    string   `json:"key"`
+	Name   string   `json:"name"`
+	Unit   string   `json:"unit"`
+	Min    int      `json:"min"`
+	Max    int      `json:"max"`
+	Kind   string   `json:"kind"`
+	Labels []string `json:"labels"`
+	// Safety marks the settings written first by a grouped apply, so the UI can
+	// group them together as the safety envelope.
+	Safety bool `json:"safety"`
+	// Verified is false while a command's range and scaling are still taken from
+	// Boxflat's database rather than confirmed on this hardware. The UI should
+	// say so rather than presenting a guess as fact.
+	Verified bool   `json:"verified"`
+	Note     string `json:"note"`
+}
+
+// MozaBaseCommands returns the registry, so the frontend builds its controls from
+// the same definitions that validate the writes.
+func (r *Runtime) MozaBaseCommands() []MozaBaseCommand {
+	commands := moza.BaseCommands()
+	out := make([]MozaBaseCommand, 0, len(commands))
+	for _, c := range commands {
+		out = append(out, MozaBaseCommand{
+			Key:      c.Key,
+			Name:     c.Name,
+			Unit:     c.Unit,
+			Min:      c.Min,
+			Max:      c.Max,
+			Kind:     c.Kind.String(),
+			Labels:   c.Labels,
+			Safety:   moza.IsSafetyCommand(c.Key),
+			Verified: c.Verified,
+			Note:     c.Note,
+		})
+	}
+	return out
+}
