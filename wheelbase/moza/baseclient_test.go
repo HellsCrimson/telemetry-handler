@@ -52,6 +52,68 @@ func (p *fakePort) read(b []byte) (int, error) {
 	return n, nil
 }
 
+// classifyRequest identifies which registry command a request is for and whether
+// it is a write.
+//
+// Group alone cannot tell the two apart — the main device answers reads and
+// writes on 0x1f — so the payload is what distinguishes them: a read carries
+// none.
+func classifyRequest(req []byte) (BaseCommand, bool, bool) {
+	for _, cmd := range baseCommands {
+		if req[3] != cmd.device() {
+			continue
+		}
+		for _, dir := range []struct {
+			group uint8
+			id    []uint8
+			write bool
+		}{{cmd.readGroup(), cmd.readID(), false}, {cmd.writeGroup(), cmd.writeID(), true}} {
+			if req[2] != dir.group || len(req) < 5+len(dir.id) {
+				continue
+			}
+			if string(req[4:4+len(dir.id)]) != string(dir.id) {
+				continue
+			}
+			// 0x7e, len, group, device, id..., payload..., checksum
+			payload := len(req) - 5 - len(dir.id)
+			if dir.write != (payload > 0) {
+				continue
+			}
+			return cmd, dir.write, true
+		}
+	}
+	return BaseCommand{}, false, false
+}
+
+// basePort scripts a cooperative wheelbase: a write is acknowledged with the
+// value it carried, a read is answered with the current value.
+//
+// current is in display units, keyed by command, and defaults to the command's
+// maximum. It exists because a grouped apply now READS the safety settings
+// before ordering them — whether a limit is being tightened or loosened decides
+// when it is written.
+func basePort(t *testing.T, current map[string]int) *fakePort {
+	t.Helper()
+	return &fakePort{reply: func(_ int, req []byte) []byte {
+		cmd, write, ok := classifyRequest(req)
+		if !ok {
+			t.Fatalf("unrecognised request % x", req)
+		}
+		if write {
+			return replyTo(t, req, req[len(req)-3:len(req)-1])
+		}
+		value, has := current[cmd.Key]
+		if !has {
+			value = cmd.Max
+		}
+		payload, err := cmd.encode(value)
+		if err != nil {
+			t.Fatalf("encode %s = %d: %v", cmd.Key, value, err)
+		}
+		return replyTo(t, req, payload)
+	}}
+}
+
 // newTestClient wires a client to a fake port with a short timeout, so the
 // no-reply path does not add half a second to the suite.
 func newTestClient(p *fakePort) *BaseClient {
@@ -185,16 +247,16 @@ func TestWriteSettingValidatesBeforeSending(t *testing.T) {
 	}
 }
 
-// The safety envelope goes first. An apply cut short then leaves the base more
-// restricted than either preset intended, rather than pairing an old high torque
-// cap with limits that never arrived.
-func TestApplySettingsWritesSafetyFirst(t *testing.T) {
-	p := &fakePort{reply: func(_ int, req []byte) []byte { return replyTo(t, req, req[5:7]) }}
+// A safety limit being TIGHTENED goes first. An apply cut short then leaves the
+// base more restricted than either preset intended, rather than pairing an old
+// high torque cap with limits that never arrived.
+func TestApplySettingsWritesTighteningSafetyFirst(t *testing.T) {
+	p := basePort(t, map[string]int{"torque": 100, "limit_angle": 900})
 	patch := SettingsPatch{
 		"damper":       40,
 		"ffb_strength": 80,
-		"torque":       70,
-		"limit_angle":  540,
+		"torque":       70,  // down from 100
+		"limit_angle":  540, // down from 900
 		"friction":     20,
 	}
 	res, err := newTestClient(p).ApplySettings(patch)
@@ -209,11 +271,82 @@ func TestApplySettingsWritesSafetyFirst(t *testing.T) {
 	}
 	for i, key := range res.Applied[:2] {
 		if !IsSafetyCommand(key) {
-			t.Errorf("position %d is %q; the safety envelope must be written first (order: %v)", i, key, res.Applied)
+			t.Errorf("position %d is %q; a tightening safety envelope must be written first (order: %v)", i, key, res.Applied)
 		}
 	}
 	if IsSafetyCommand(res.Applied[len(res.Applied)-1]) {
 		t.Errorf("a safety setting was written last: %v", res.Applied)
+	}
+}
+
+// The mirror image, and the reason "safety first" alone is not the rule. A limit
+// being RAISED must be written LAST: an apply interrupted after it would
+// otherwise leave the more permissive cap paired with the previous preset's
+// settings — looser than anything the user asked for.
+func TestApplySettingsWritesRaisingSafetyLast(t *testing.T) {
+	p := basePort(t, map[string]int{"torque": 50, "limit_angle": 360})
+	patch := SettingsPatch{
+		"damper":       40,
+		"ffb_strength": 80,
+		"torque":       70,  // up from 50
+		"limit_angle":  540, // up from 360
+		"friction":     20,
+	}
+	res, err := newTestClient(p).ApplySettings(patch)
+	if err != nil {
+		t.Fatalf("ApplySettings: %v", err)
+	}
+	if !res.Ok() {
+		t.Fatalf("expected a clean apply, failed: %v", res.Failed)
+	}
+	tail := res.Applied[len(res.Applied)-2:]
+	for i, key := range tail {
+		if !IsSafetyCommand(key) {
+			t.Errorf("tail position %d is %q; a raised limit must be written last (order: %v)", i, key, res.Applied)
+		}
+	}
+	if IsSafetyCommand(res.Applied[0]) {
+		t.Errorf("a raised safety limit was written first: %v", res.Applied)
+	}
+}
+
+// A patch can do both at once, and each limit is placed by its own direction:
+// the one coming down leads, the one going up trails.
+func TestApplySettingsSplitsSafetyByDirection(t *testing.T) {
+	p := basePort(t, map[string]int{"torque": 50, "limit_angle": 900})
+	res, err := newTestClient(p).ApplySettings(SettingsPatch{
+		"ffb_strength": 80,
+		"torque":       70,  // up
+		"limit_angle":  540, // down
+	})
+	if err != nil {
+		t.Fatalf("ApplySettings: %v", err)
+	}
+	if got := res.Applied; len(got) != 3 || got[0] != "limit_angle" || got[2] != "torque" {
+		t.Errorf("order = %v, want limit_angle (tightening) first and torque (loosening) last", got)
+	}
+}
+
+// A safety limit whose current value cannot be read is treated as if it were
+// being raised. The cautious placement is last: if the apply is interrupted
+// before it, the wheel keeps the older, unknown limit rather than a possibly
+// looser new one.
+func TestApplySettingsTreatsAnUnreadableLimitAsRaising(t *testing.T) {
+	torque, _ := LookupBaseCommand("torque")
+	p := basePort(t, nil)
+	cooperative := p.reply
+	p.reply = func(n int, req []byte) []byte {
+		if cmd, write, ok := classifyRequest(req); ok && !write && cmd.Key == torque.Key {
+			return nil // the base does not answer the read
+		}
+		return cooperative(n, req)
+	}
+	res, err := newTestClient(p).ApplySettings(SettingsPatch{"ffb_strength": 80, "torque": 70})
+	if err != nil {
+		t.Fatalf("ApplySettings: %v", err)
+	}
+	if got := res.Applied; len(got) != 2 || got[1] != "torque" {
+		t.Errorf("order = %v; an unreadable limit must be written last", got)
 	}
 }
 
@@ -225,7 +358,7 @@ func TestApplySettingsContinuesPastAFailure(t *testing.T) {
 		if req[4] == cmd.ID[0] {
 			return nil // this base does not implement it
 		}
-		return replyTo(t, req, req[5:7])
+		return basePort(t, nil).reply(0, req)
 	}}
 	res, err := newTestClient(p).ApplySettings(SettingsPatch{
 		"ffb_strength": 60,
@@ -574,7 +707,7 @@ func TestWithBaseRefusesWithoutAPort(t *testing.T) {
 // land on top of what it did. The other order silently discards them, and the
 // driver gets an equalizer they did not ask for with no way to see it.
 func TestApplySettingsWritesMacrosBeforeWhatTheyRewrite(t *testing.T) {
-	p := &fakePort{reply: func(_ int, req []byte) []byte { return replyTo(t, req, req[len(req)-3:len(req)-1]) }}
+	p := basePort(t, nil)
 	res, err := newTestClient(p).ApplySettings(SettingsPatch{
 		"equalizer1":       200,
 		"equalizer3":       150,

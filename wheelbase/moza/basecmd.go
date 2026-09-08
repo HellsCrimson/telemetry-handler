@@ -252,9 +252,9 @@ var baseCommands = []BaseCommand{
 		Note: "the base stores the angle per side; the displayed figure is total lock to lock",
 	},
 	{
-		Key: "torque", Name: "Max torque output", ID: []uint8{0x12}, Bytes: 2,
-		Min: 50, Max: 100, Unit: "%",
-		Note: "floor of 50 matches Boxflat's own slider; not yet confirmed on this base",
+		Key: "torque", Name: "Base torque output", ID: []uint8{0x12}, Bytes: 2,
+		Min: 50, Max: 100, Unit: "%", Verified: true,
+		Note: "unscaled; floor of 50 matches Boxflat's own slider",
 	},
 	{
 		Key: "speed", Name: "Maximum wheel speed", ID: []uint8{0x0a}, Bytes: 2,
@@ -287,7 +287,7 @@ var baseCommands = []BaseCommand{
 	{Key: "natural_inertia_enabled", Name: "Natural inertia enable", ID: []uint8{0x16}, Bytes: 2, Kind: KindBool},
 
 	// --- Speed-dependent damping.
-	{Key: "speed_damping", Name: "Damping level", ID: []uint8{0x19}, Bytes: 2, Min: 0, Max: 100, Unit: "%"},
+	{Key: "speed_damping", Name: "Damping level", ID: []uint8{0x19}, Bytes: 2, Min: 0, Max: 100, Unit: "%", Verified: true},
 	{
 		Key: "speed_damping_point", Name: "Trigger speed", ID: []uint8{0x1a}, Bytes: 2,
 		Min: 0, Max: 400, Unit: "km/h",

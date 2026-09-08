@@ -227,6 +227,17 @@ type Moza struct {
 	// two points means a straight linear response (default, unchanged), so old
 	// configs are unaffected. The dashboard's presets just populate these points.
 	RPMCurvePoints []CurvePoint `json:"rpm_curve_points,omitempty"`
+	// AllowBaseWrites permits the app to change the wheelbase's stored settings —
+	// steering angle, torque cap, force feedback and the rest of the base's own
+	// configuration.
+	//
+	// Off by default, and deliberately not a button in the UI. Unlike everything
+	// else the app writes to the wheel, these settings PERSIST on the hardware:
+	// they outlive the app, and a wrong one is still there next time the user
+	// drives, in a game that never asked for it. Turning this on is a decision to
+	// let the app be the thing that owns them, and it should be made once, in the
+	// config file, rather than by a stray click.
+	AllowBaseWrites bool `json:"allow_base_writes,omitempty"`
 }
 
 // CurvePoint is one control point of the MOZA rev-light response curve. X is the

@@ -877,6 +877,12 @@ type MozaBaseSnapshot struct {
 	// unavailable rather than as a value, because an older base legitimately
 	// implements only part of the command set.
 	Unsupported map[string]bool `json:"unsupported"`
+	// Writable reports whether the app is allowed to change these settings at all
+	// (config `moza.allow_base_writes`). When false, WriteBlocked says why, and
+	// the page renders as it did before writing existed — controls disabled with
+	// a reason rather than hidden.
+	Writable     bool   `json:"writable"`
+	WriteBlocked string `json:"write_blocked"`
 }
 
 // ReadMozaBase reads the wheelbase's stored settings and status.
@@ -905,6 +911,7 @@ func (r *Runtime) ReadMozaBase() MozaBaseSnapshot {
 		Temps:       map[string]float64{},
 		Unsupported: map[string]bool{},
 	}
+	snap.Writable, snap.WriteBlocked = r.mozaWritePermission()
 	err := moza.WithBase(driver, port, func(c *moza.BaseClient) error {
 		settings, err := c.ReadAllSettings()
 		if err != nil {
@@ -932,6 +939,132 @@ func (r *Runtime) ReadMozaBase() MozaBaseSnapshot {
 	return snap
 }
 
+// MozaApplyResult is what came of a settings write, verified by reading the
+// values back rather than by trusting the base's acknowledgements.
+//
+// A partial apply is a real outcome, not an exception: an older base may not
+// implement one command in a patch, and the user has to be able to tell which of
+// their changes are live and which are not.
+type MozaApplyResult struct {
+	// Ok is true only when every requested setting was written AND read back as
+	// written.
+	Ok bool `json:"ok"`
+	// Refused is set when nothing was attempted — writes disabled, no wheelbase,
+	// an unknown key, a value out of range. Nothing reached the hardware.
+	Refused string `json:"refused"`
+	// Applied lists the settings written, in the order they were written.
+	Applied []string `json:"applied"`
+	// Failed maps a setting to why its write failed. Strings rather than errors
+	// because this crosses the bindings.
+	Failed map[string]string `json:"failed"`
+	// Mismatched names settings the base acknowledged but did not actually take.
+	// This is what a dropped write looks like from the outside, and it is the
+	// reason the result is read back at all.
+	Mismatched map[string]int `json:"mismatched"`
+	// Settings is a fresh read of everything after the write, so the page shows
+	// the wheel's real state rather than what it hoped for.
+	Settings map[string]int `json:"settings"`
+	// Rewritten maps a setting to the one in the same patch that overwrites it as
+	// a side effect. Applying still works — the ordering makes the explicit value
+	// win — but the user asked for two things that interact and should be told.
+	Rewritten map[string]string `json:"rewritten"`
+}
+
+// ApplyMozaBase writes settings to the wheelbase and reads them back.
+//
+// Three refusals happen before anything reaches the wire, because a patch that
+// is half-applied and then rejected is worse than one never started:
+//
+//   - Writing is off unless the config says otherwise. These settings persist on
+//     the hardware, so the app does not own them by default.
+//   - A setting whose conversion is not confirmed on this hardware is refused.
+//     An unverified scale means we do not know what number actually arrives, and
+//     "write 20" landing as 200 on a torque cap is the accident worth designing
+//     against.
+//   - Values are validated against the registry, which is the same source the UI
+//     built its controls from.
+func (r *Runtime) ApplyMozaBase(patch map[string]int) MozaApplyResult {
+	result := MozaApplyResult{
+		Failed:     map[string]string{},
+		Mismatched: map[string]int{},
+		Settings:   map[string]int{},
+	}
+	if len(patch) == 0 {
+		result.Refused = "Nothing to apply."
+		return result
+	}
+
+	r.mu.RLock()
+	allowed := r.cfg.Moza.AllowBaseWrites
+	driver, port := r.moza, r.mozaDevice.Port
+	if port == "" {
+		port = r.cfg.Moza.Port
+	}
+	r.mu.RUnlock()
+
+	if !allowed {
+		result.Refused = "Writing wheelbase settings is disabled. Set moza.allow_base_writes in the config file to enable it."
+		return result
+	}
+	if driver == nil && port == "" {
+		result.Refused = "No MOZA serial port configured or detected."
+		return result
+	}
+
+	settings := moza.SettingsPatch{}
+	for key, value := range patch {
+		cmd, ok := moza.LookupBaseCommand(key)
+		if !ok {
+			result.Refused = fmt.Sprintf("Unknown setting %q.", key)
+			return result
+		}
+		if !cmd.Verified {
+			result.Refused = fmt.Sprintf("%s cannot be written yet: its conversion is not confirmed on this hardware, "+
+				"so the value that reaches the base may not be the one shown.", cmd.Name)
+			return result
+		}
+		if err := cmd.Validate(value); err != nil {
+			result.Refused = err.Error()
+			return result
+		}
+		settings[key] = value
+	}
+	result.Rewritten = moza.Rewrites(settings)
+
+	err := moza.WithBase(driver, port, func(c *moza.BaseClient) error {
+		applied, err := c.ApplySettings(settings)
+		if err != nil {
+			return err
+		}
+		result.Applied = applied.Applied
+		for key, err := range applied.Failed {
+			result.Failed[key] = err.Error()
+		}
+
+		// Read everything back, not just what was written: a macro setting rewrites
+		// values the user did not touch, and the page must show what the wheel now
+		// holds rather than what it held before.
+		snap, err := c.ReadAllSettings()
+		if err != nil {
+			return err
+		}
+		result.Settings = snap.Values
+		for key, want := range settings {
+			got, ok := snap.Values[key]
+			if !ok || got != want {
+				result.Mismatched[key] = got
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		result.Refused = err.Error()
+		return result
+	}
+	result.Ok = len(result.Failed) == 0 && len(result.Mismatched) == 0
+	return result
+}
+
 // MozaBaseCommand is one wheelbase setting's metadata, as the frontend needs it.
 // It mirrors moza.BaseCommand rather than exposing it directly, so the wire type
 // stays stable if the internal one gains fields.
@@ -951,6 +1084,23 @@ type MozaBaseCommand struct {
 	// say so rather than presenting a guess as fact.
 	Verified bool   `json:"verified"`
 	Note     string `json:"note"`
+	// Affects names settings this one rewrites as a side effect — road sensitivity
+	// is a macro on this firmware and moves the equalizer bands with it. The UI
+	// needs this before the apply, not after, so it can say that changing one
+	// control will move others the user can see on the same page.
+	Affects []string `json:"affects"`
+}
+
+// mozaWritePermission reports whether settings may be written, and why not when
+// they may not. The reason travels with the snapshot so the page can explain
+// itself instead of showing controls that quietly do nothing.
+func (r *Runtime) mozaWritePermission() (bool, string) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if !r.cfg.Moza.AllowBaseWrites {
+		return false, "Read-only: set moza.allow_base_writes in the config file to let the app change these settings."
+	}
+	return true, ""
 }
 
 // MozaBaseCommands returns the registry, so the frontend builds its controls from
@@ -970,6 +1120,7 @@ func (r *Runtime) MozaBaseCommands() []MozaBaseCommand {
 			Safety:   moza.IsSafetyCommand(c.Key),
 			Verified: c.Verified,
 			Note:     c.Note,
+			Affects:  c.Affects,
 		})
 	}
 	return out

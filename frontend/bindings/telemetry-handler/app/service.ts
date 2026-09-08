@@ -63,13 +63,31 @@ export function ApplyConfig(cfg: config$0.Config): $CancellablePromise<config$0.
 }
 
 /**
+ * ApplyMozaBase writes wheelbase settings and reads them back.
+ * 
+ * The patch is partial by design — the user changes steering angle and force
+ * feedback and leaves everything else exactly as Pit House left it — and the
+ * result says which settings are live, which failed, and which the base
+ * acknowledged without taking.
+ * 
+ * It is gated on `moza.allow_base_writes` because these settings persist on the
+ * hardware: they outlive the app, and a wrong one is still there next time the
+ * user drives.
+ */
+export function ApplyMozaBase(patch: { [_ in string]?: number }): $CancellablePromise<$models.MozaApplyResult> {
+    return $Call.ByID(337721022, patch).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+/**
  * DetectMoza lists the MOZA wheels currently attached over USB so the dashboard
  * can show what is connected and let the user pick the serial port. Empty when
  * none are attached (or on platforms without detection).
  */
 export function DetectMoza(): $CancellablePromise<moza$0.Device[]> {
     return $Call.ByID(3753523288).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType4($result);
     });
 }
 
@@ -83,7 +101,7 @@ export function DetectMoza(): $CancellablePromise<moza$0.Device[]> {
  */
 export function GetCarSetup(): $CancellablePromise<rest$0.CarSetup | null> {
     return $Call.ByID(2441290097).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
@@ -95,7 +113,7 @@ export function GetConfig(): $CancellablePromise<config$0.Config> {
 
 export function GetConfigStatus(): $CancellablePromise<$models.ConfigStatus> {
     return $Call.ByID(4163477518).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType7($result);
     });
 }
 
@@ -108,7 +126,7 @@ export function GetConfigStatus(): $CancellablePromise<$models.ConfigStatus> {
  */
 export function GetEngineerState(): $CancellablePromise<engineer$0.SessionState> {
     return $Call.ByID(1967406312).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
@@ -120,7 +138,7 @@ export function GetEngineerState(): $CancellablePromise<engineer$0.SessionState>
  */
 export function GetLatestFrame(): $CancellablePromise<wire$0.Frame | null> {
     return $Call.ByID(4261655122).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType10($result);
     });
 }
 
@@ -130,7 +148,7 @@ export function GetLatestFrame(): $CancellablePromise<wire$0.Frame | null> {
  */
 export function GetMonitorInfo(): $CancellablePromise<$models.MonitorInfo> {
     return $Call.ByID(239629648).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
@@ -141,13 +159,13 @@ export function GetMonitorInfo(): $CancellablePromise<$models.MonitorInfo> {
  */
 export function GetMozaStatus(): $CancellablePromise<$models.MozaStatus> {
     return $Call.ByID(4221892961).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType12($result);
     });
 }
 
 export function GetOverlayStatus(): $CancellablePromise<$models.OverlayStatus> {
     return $Call.ByID(2207766068).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
     });
 }
 
@@ -157,13 +175,13 @@ export function GetOverlayStatus(): $CancellablePromise<$models.OverlayStatus> {
  */
 export function GetPitMenu(): $CancellablePromise<rest$0.PitMenuItem[]> {
     return $Call.ByID(3099330100).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType15($result);
     });
 }
 
 export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(3118608443).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -173,7 +191,7 @@ export function GetRecordingStatus(): $CancellablePromise<recording$0.Status> {
  */
 export function GetSetupList(): $CancellablePromise<rest$0.SetupFile[]> {
     return $Call.ByID(44972655).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType18($result);
     });
 }
 
@@ -187,13 +205,13 @@ export function GetSetupList(): $CancellablePromise<rest$0.SetupFile[]> {
  */
 export function GetStrategyData(): $CancellablePromise<rest$0.Snapshot | null> {
     return $Call.ByID(2558008555).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType20($result);
     });
 }
 
 export function GetTelemetry(): $CancellablePromise<$models.TelemetrySnapshot> {
     return $Call.ByID(3996014961).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType21($result);
     });
 }
 
@@ -212,7 +230,7 @@ export function GetUIScale(): $CancellablePromise<number> {
  */
 export function LearnVoiceButton(timeoutSeconds: number): $CancellablePromise<voice$0.Button> {
     return $Call.ByID(4038755602, timeoutSeconds).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType22($result);
     });
 }
 
@@ -222,7 +240,7 @@ export function LearnVoiceButton(timeoutSeconds: number): $CancellablePromise<vo
  */
 export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRow[]> {
     return $Call.ByID(189090443).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType24($result);
     });
 }
 
@@ -232,13 +250,13 @@ export function ListIndexedRecordings(): $CancellablePromise<store$0.RecordingRo
  */
 export function ListMonitors(): $CancellablePromise<string[]> {
     return $Call.ByID(4014067021).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType25($result);
     });
 }
 
 export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
     return $Call.ByID(632406974).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType27($result);
     });
 }
 
@@ -248,7 +266,7 @@ export function ListRecordings(): $CancellablePromise<recording$0.Info[]> {
  */
 export function ListSessions(): $CancellablePromise<store$0.SessionRow[]> {
     return $Call.ByID(660293959).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType29($result);
     });
 }
 
@@ -259,7 +277,7 @@ export function ListSessions(): $CancellablePromise<store$0.SessionRow[]> {
  */
 export function MozaBaseCommands(): $CancellablePromise<$models.MozaBaseCommand[]> {
     return $Call.ByID(504343740).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType31($result);
     });
 }
 
@@ -270,20 +288,18 @@ export function PreviewMoza(moza: config$0.Moza): $CancellablePromise<void> {
 /**
  * ReadMozaBase reads the wheelbase's stored settings and temperatures.
  * 
- * Read-only by design: this is the surface that proves the protocol against real
- * hardware, and lets the command registry's provisional ranges be compared with
- * Boxflat and Pit House, before the app writes anything to a device that stores
- * what it is told. Writes arrive in a later milestone behind their own switch.
+ * The snapshot also carries whether writing is permitted, so the page has one
+ * authoritative answer rather than inferring it.
  */
 export function ReadMozaBase(): $CancellablePromise<$models.MozaBaseSnapshot> {
     return $Call.ByID(2327856366).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType32($result);
     });
 }
 
 export function ReplayRecording(name: string, maxSamples: number): $CancellablePromise<$models.ReplaySample[]> {
     return $Call.ByID(1464642608, name, maxSamples).then(($result: any) => {
-        return $$createType33($result);
+        return $$createType34($result);
     });
 }
 
@@ -349,13 +365,13 @@ export function SetWindow(w: $models.Zoomable): $CancellablePromise<void> {
 
 export function StartRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(982748349).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
 export function StopRecording(): $CancellablePromise<recording$0.Status> {
     return $Call.ByID(1374983877).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -376,43 +392,44 @@ export function TestMozaLights(): $CancellablePromise<void> {
  */
 export function TestVoiceTTS(v: config$0.Voice): $CancellablePromise<$models.VoiceTestResult> {
     return $Call.ByID(2174446089, v).then(($result: any) => {
-        return $$createType34($result);
+        return $$createType35($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = analysis$0.Report.createFrom;
 const $$createType1 = config$0.Config.createFrom;
-const $$createType2 = moza$0.Device.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = rest$0.CarSetup.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $models.ConfigStatus.createFrom;
-const $$createType7 = engineer$0.SessionState.createFrom;
-const $$createType8 = wire$0.Frame.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $models.MonitorInfo.createFrom;
-const $$createType11 = $models.MozaStatus.createFrom;
-const $$createType12 = $models.OverlayStatus.createFrom;
-const $$createType13 = rest$0.PitMenuItem.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = recording$0.Status.createFrom;
-const $$createType16 = rest$0.SetupFile.createFrom;
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = rest$0.Snapshot.createFrom;
-const $$createType19 = $Create.Nullable($$createType18);
-const $$createType20 = $models.TelemetrySnapshot.createFrom;
-const $$createType21 = voice$0.Button.createFrom;
-const $$createType22 = store$0.RecordingRow.createFrom;
-const $$createType23 = $Create.Array($$createType22);
-const $$createType24 = $Create.Array($Create.Any);
-const $$createType25 = recording$0.Info.createFrom;
-const $$createType26 = $Create.Array($$createType25);
-const $$createType27 = store$0.SessionRow.createFrom;
-const $$createType28 = $Create.Array($$createType27);
-const $$createType29 = $models.MozaBaseCommand.createFrom;
-const $$createType30 = $Create.Array($$createType29);
-const $$createType31 = $models.MozaBaseSnapshot.createFrom;
-const $$createType32 = $models.ReplaySample.createFrom;
-const $$createType33 = $Create.Array($$createType32);
-const $$createType34 = $models.VoiceTestResult.createFrom;
+const $$createType2 = $models.MozaApplyResult.createFrom;
+const $$createType3 = moza$0.Device.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = rest$0.CarSetup.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);
+const $$createType7 = $models.ConfigStatus.createFrom;
+const $$createType8 = engineer$0.SessionState.createFrom;
+const $$createType9 = wire$0.Frame.createFrom;
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = $models.MonitorInfo.createFrom;
+const $$createType12 = $models.MozaStatus.createFrom;
+const $$createType13 = $models.OverlayStatus.createFrom;
+const $$createType14 = rest$0.PitMenuItem.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = recording$0.Status.createFrom;
+const $$createType17 = rest$0.SetupFile.createFrom;
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = rest$0.Snapshot.createFrom;
+const $$createType20 = $Create.Nullable($$createType19);
+const $$createType21 = $models.TelemetrySnapshot.createFrom;
+const $$createType22 = voice$0.Button.createFrom;
+const $$createType23 = store$0.RecordingRow.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = $Create.Array($Create.Any);
+const $$createType26 = recording$0.Info.createFrom;
+const $$createType27 = $Create.Array($$createType26);
+const $$createType28 = store$0.SessionRow.createFrom;
+const $$createType29 = $Create.Array($$createType28);
+const $$createType30 = $models.MozaBaseCommand.createFrom;
+const $$createType31 = $Create.Array($$createType30);
+const $$createType32 = $models.MozaBaseSnapshot.createFrom;
+const $$createType33 = $models.ReplaySample.createFrom;
+const $$createType34 = $Create.Array($$createType33);
+const $$createType35 = $models.VoiceTestResult.createFrom;

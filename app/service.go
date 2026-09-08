@@ -1071,12 +1071,24 @@ func (s *Service) ListMonitors() []string {
 
 // ReadMozaBase reads the wheelbase's stored settings and temperatures.
 //
-// Read-only by design: this is the surface that proves the protocol against real
-// hardware, and lets the command registry's provisional ranges be compared with
-// Boxflat and Pit House, before the app writes anything to a device that stores
-// what it is told. Writes arrive in a later milestone behind their own switch.
+// The snapshot also carries whether writing is permitted, so the page has one
+// authoritative answer rather than inferring it.
 func (s *Service) ReadMozaBase() MozaBaseSnapshot {
 	return s.runtime.ReadMozaBase()
+}
+
+// ApplyMozaBase writes wheelbase settings and reads them back.
+//
+// The patch is partial by design — the user changes steering angle and force
+// feedback and leaves everything else exactly as Pit House left it — and the
+// result says which settings are live, which failed, and which the base
+// acknowledged without taking.
+//
+// It is gated on `moza.allow_base_writes` because these settings persist on the
+// hardware: they outlive the app, and a wrong one is still there next time the
+// user drives.
+func (s *Service) ApplyMozaBase(patch map[string]int) MozaApplyResult {
+	return s.runtime.ApplyMozaBase(patch)
 }
 
 // MozaBaseCommands returns the wheelbase setting definitions — key, label, unit,

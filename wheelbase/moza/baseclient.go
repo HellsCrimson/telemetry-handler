@@ -17,6 +17,10 @@ const (
 	// baseReadChunk is the read buffer size. Frames are a handful of bytes, but
 	// the port may hand back several at once.
 	baseReadChunk = 256
+	// writeGap paces a grouped apply. See readGap in basesession.go for the
+	// measurements behind it; a write is a request/response exchange like any
+	// other and overruns the base the same way.
+	writeGap = 5 * time.Millisecond
 )
 
 // ErrUnsupported marks a command the base did not answer. It is distinct from a
@@ -137,13 +141,25 @@ func (r ApplyResult) Ok() bool { return len(r.Failed) == 0 }
 // should not prevent the rest of a preset from landing. Everything that failed
 // is reported.
 func (c *BaseClient) ApplySettings(patch SettingsPatch) (ApplyResult, error) {
-	keys, err := orderedKeys(patch)
+	// A safety limit's direction decides when it is written, so the current
+	// values are needed before anything is ordered. Only the safety keys are
+	// read — three at most, and only those present in the patch.
+	raising, err := c.risingSafetyKeys(patch)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	keys, err := orderedKeys(patch, raising)
 	if err != nil {
 		return ApplyResult{}, err
 	}
 
 	result := ApplyResult{Failed: map[string]error{}}
 	for _, key := range keys {
+		// Paced for the same reason bulk reads are: back-to-back requests overrun
+		// the base and it stops answering some of them. A dropped read shows an
+		// empty field; a dropped WRITE means a setting the user believes they
+		// changed silently did not change, which is the worse of the two.
+		time.Sleep(writeGap)
 		cmd, _ := LookupBaseCommand(key)
 		if err := c.WriteSetting(cmd, patch[key]); err != nil {
 			result.Failed[key] = err
@@ -154,12 +170,45 @@ func (c *BaseClient) ApplySettings(patch SettingsPatch) (ApplyResult, error) {
 	return result, nil
 }
 
+// risingSafetyKeys reads the safety settings in a patch and reports which are
+// being RAISED — that is, made more permissive than the wheel is now.
+//
+// A read failure here is not fatal: treating a limit as rising is the cautious
+// assumption, since it pushes the write to the end where an interruption leaves
+// the wheel restricted rather than loose.
+func (c *BaseClient) risingSafetyKeys(patch SettingsPatch) (map[string]bool, error) {
+	rising := map[string]bool{}
+	for key, target := range patch {
+		if !IsSafetyCommand(key) {
+			continue
+		}
+		cmd, ok := LookupBaseCommand(key)
+		if !ok {
+			return nil, fmt.Errorf("unknown setting %q", key)
+		}
+		current, err := c.ReadSetting(cmd)
+		if err != nil {
+			rising[key] = true // cautious: write it last
+			continue
+		}
+		rising[key] = target > current
+	}
+	return rising, nil
+}
+
 // orderedKeys sorts a patch into apply order.
 //
-// Three rules, in priority order:
+// The invariant is that an apply cut short — by a crash, a USB drop, the user
+// quitting — leaves the wheel MORE restricted than either the old or the new
+// preset intended, never less. Delivering that takes three rules:
 //
-//  1. The safety envelope first, so an apply cut short leaves the base more
-//     restricted rather than less.
+//  1. A safety limit being LOWERED is written first; one being RAISED is written
+//     last. Direction matters and this is easy to get wrong: "safety first"
+//     alone is only correct when limits are coming down. A preset that raises
+//     the torque cap and is then interrupted would otherwise leave the higher
+//     cap paired with the previous preset's settings — more permissive than
+//     anything the user asked for, which is the exact failure the rule exists to
+//     prevent.
 //  2. A setting that rewrites others as a side effect goes before the settings
 //     it rewrites. Road sensitivity is a macro on this firmware — changing it
 //     also moves the equalizer bands — so a preset carrying both must apply the
@@ -167,7 +216,7 @@ func (c *BaseClient) ApplySettings(patch SettingsPatch) (ApplyResult, error) {
 //     silently discards what the user actually asked for.
 //  3. Otherwise the registry's own order, so the sequence is deterministic and
 //     reviewable.
-func orderedKeys(patch SettingsPatch) ([]string, error) {
+func orderedKeys(patch SettingsPatch, raising map[string]bool) ([]string, error) {
 	rank := make(map[string]int, len(baseCommands))
 	for i, cmd := range baseCommands {
 		rank[cmd.Key] = i
@@ -191,10 +240,22 @@ func orderedKeys(patch SettingsPatch) ([]string, error) {
 		}
 	}
 
+	// tier puts tightening limits first, ordinary settings in the middle, and
+	// loosening limits last.
+	tier := func(key string) int {
+		if !IsSafetyCommand(key) {
+			return 1
+		}
+		if raising[key] {
+			return 2
+		}
+		return 0
+	}
+
 	sort.Slice(keys, func(i, j int) bool {
 		a, b := keys[i], keys[j]
-		if si, sj := IsSafetyCommand(a), IsSafetyCommand(b); si != sj {
-			return si
+		if ta, tb := tier(a), tier(b); ta != tb {
+			return ta < tb
 		}
 		// Whichever of the pair is clobbered by the other must come later.
 		if rewrittenBy[b] == a {

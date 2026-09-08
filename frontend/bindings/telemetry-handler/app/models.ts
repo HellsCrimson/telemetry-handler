@@ -82,6 +82,114 @@ export class MonitorInfo {
 }
 
 /**
+ * MozaApplyResult is what came of a settings write, verified by reading the
+ * values back rather than by trusting the base's acknowledgements.
+ * 
+ * A partial apply is a real outcome, not an exception: an older base may not
+ * implement one command in a patch, and the user has to be able to tell which of
+ * their changes are live and which are not.
+ */
+export class MozaApplyResult {
+    /**
+     * Ok is true only when every requested setting was written AND read back as
+     * written.
+     */
+    "ok": boolean;
+
+    /**
+     * Refused is set when nothing was attempted — writes disabled, no wheelbase,
+     * an unknown key, a value out of range. Nothing reached the hardware.
+     */
+    "refused": string;
+
+    /**
+     * Applied lists the settings written, in the order they were written.
+     */
+    "applied": string[];
+
+    /**
+     * Failed maps a setting to why its write failed. Strings rather than errors
+     * because this crosses the bindings.
+     */
+    "failed": { [_ in string]?: string };
+
+    /**
+     * Mismatched names settings the base acknowledged but did not actually take.
+     * This is what a dropped write looks like from the outside, and it is the
+     * reason the result is read back at all.
+     */
+    "mismatched": { [_ in string]?: number };
+
+    /**
+     * Settings is a fresh read of everything after the write, so the page shows
+     * the wheel's real state rather than what it hoped for.
+     */
+    "settings": { [_ in string]?: number };
+
+    /**
+     * Rewritten maps a setting to the one in the same patch that overwrites it as
+     * a side effect. Applying still works — the ordering makes the explicit value
+     * win — but the user asked for two things that interact and should be told.
+     */
+    "rewritten": { [_ in string]?: string };
+
+    /** Creates a new MozaApplyResult instance. */
+    constructor($$source: Partial<MozaApplyResult> = {}) {
+        if (!("ok" in $$source)) {
+            this["ok"] = false;
+        }
+        if (!("refused" in $$source)) {
+            this["refused"] = "";
+        }
+        if (!("applied" in $$source)) {
+            this["applied"] = [];
+        }
+        if (!("failed" in $$source)) {
+            this["failed"] = {};
+        }
+        if (!("mismatched" in $$source)) {
+            this["mismatched"] = {};
+        }
+        if (!("settings" in $$source)) {
+            this["settings"] = {};
+        }
+        if (!("rewritten" in $$source)) {
+            this["rewritten"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MozaApplyResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MozaApplyResult {
+        const $$createField2_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType2;
+        const $$createField6_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("applied" in $$parsedSource) {
+            $$parsedSource["applied"] = $$createField2_0($$parsedSource["applied"]);
+        }
+        if ("failed" in $$parsedSource) {
+            $$parsedSource["failed"] = $$createField3_0($$parsedSource["failed"]);
+        }
+        if ("mismatched" in $$parsedSource) {
+            $$parsedSource["mismatched"] = $$createField4_0($$parsedSource["mismatched"]);
+        }
+        if ("settings" in $$parsedSource) {
+            $$parsedSource["settings"] = $$createField5_0($$parsedSource["settings"]);
+        }
+        if ("rewritten" in $$parsedSource) {
+            $$parsedSource["rewritten"] = $$createField6_0($$parsedSource["rewritten"]);
+        }
+        return new MozaApplyResult($$parsedSource as Partial<MozaApplyResult>);
+    }
+}
+
+/**
  * MozaBaseCommand is one wheelbase setting's metadata, as the frontend needs it.
  * It mirrors moza.BaseCommand rather than exposing it directly, so the wire type
  * stays stable if the internal one gains fields.
@@ -108,6 +216,14 @@ export class MozaBaseCommand {
      */
     "verified": boolean;
     "note": string;
+
+    /**
+     * Affects names settings this one rewrites as a side effect — road sensitivity
+     * is a macro on this firmware and moves the equalizer bands with it. The UI
+     * needs this before the apply, not after, so it can say that changing one
+     * control will move others the user can see on the same page.
+     */
+    "affects": string[];
 
     /** Creates a new MozaBaseCommand instance. */
     constructor($$source: Partial<MozaBaseCommand> = {}) {
@@ -141,6 +257,9 @@ export class MozaBaseCommand {
         if (!("note" in $$source)) {
             this["note"] = "";
         }
+        if (!("affects" in $$source)) {
+            this["affects"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -150,9 +269,13 @@ export class MozaBaseCommand {
      */
     static createFrom($$source: any = {}): MozaBaseCommand {
         const $$createField6_0 = $$createType0;
+        const $$createField10_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("labels" in $$parsedSource) {
             $$parsedSource["labels"] = $$createField6_0($$parsedSource["labels"]);
+        }
+        if ("affects" in $$parsedSource) {
+            $$parsedSource["affects"] = $$createField10_0($$parsedSource["affects"]);
         }
         return new MozaBaseCommand($$parsedSource as Partial<MozaBaseCommand>);
     }
@@ -201,6 +324,15 @@ export class MozaBaseSnapshot {
      */
     "unsupported": { [_ in string]?: boolean };
 
+    /**
+     * Writable reports whether the app is allowed to change these settings at all
+     * (config `moza.allow_base_writes`). When false, WriteBlocked says why, and
+     * the page renders as it did before writing existed — controls disabled with
+     * a reason rather than hidden.
+     */
+    "writable": boolean;
+    "write_blocked": string;
+
     /** Creates a new MozaBaseSnapshot instance. */
     constructor($$source: Partial<MozaBaseSnapshot> = {}) {
         if (!("available" in $$source)) {
@@ -230,6 +362,12 @@ export class MozaBaseSnapshot {
         if (!("unsupported" in $$source)) {
             this["unsupported"] = {};
         }
+        if (!("writable" in $$source)) {
+            this["writable"] = false;
+        }
+        if (!("write_blocked" in $$source)) {
+            this["write_blocked"] = "";
+        }
 
         Object.assign(this, $$source);
     }
@@ -238,9 +376,9 @@ export class MozaBaseSnapshot {
      * Creates a new MozaBaseSnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): MozaBaseSnapshot {
-        const $$createField2_0 = $$createType1;
-        const $$createField3_0 = $$createType2;
-        const $$createField8_0 = $$createType3;
+        const $$createField2_0 = $$createType2;
+        const $$createField3_0 = $$createType3;
+        const $$createField8_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("settings" in $$parsedSource) {
             $$parsedSource["settings"] = $$createField2_0($$parsedSource["settings"]);
@@ -379,8 +517,8 @@ export class ReplaySample {
      * Creates a new ReplaySample instance from a string or object.
      */
     static createFrom($$source: any = {}): ReplaySample {
-        const $$createField1_0 = $$createType4;
-        const $$createField3_0 = $$createType5;
+        const $$createField1_0 = $$createType5;
+        const $$createField3_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("telemetry" in $$parsedSource) {
             $$parsedSource["telemetry"] = $$createField1_0($$parsedSource["telemetry"]);
@@ -503,8 +641,8 @@ export class TelemetrySnapshot {
      * Creates a new TelemetrySnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): TelemetrySnapshot {
-        const $$createField0_0 = $$createType4;
-        const $$createField4_0 = $$createType5;
+        const $$createField0_0 = $$createType5;
+        const $$createField4_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("telemetry" in $$parsedSource) {
             $$parsedSource["telemetry"] = $$createField0_0($$parsedSource["telemetry"]);
@@ -557,5 +695,6 @@ const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = $Create.Map($Create.Any, $Create.Any);
 const $$createType2 = $Create.Map($Create.Any, $Create.Any);
 const $$createType3 = $Create.Map($Create.Any, $Create.Any);
-const $$createType4 = forza$0.Telemetry.createFrom;
-const $$createType5 = TelemetryMeta.createFrom;
+const $$createType4 = $Create.Map($Create.Any, $Create.Any);
+const $$createType5 = forza$0.Telemetry.createFrom;
+const $$createType6 = TelemetryMeta.createFrom;

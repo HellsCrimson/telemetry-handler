@@ -40,7 +40,7 @@ func main() {
 	mozaLEDProbe := flag.Bool("moza-led-probe", false, "light each rev-light segment one at a time to identify the rim's LED layout, then exit")
 	mozaLEDProbeHold := flag.Duration("moza-led-probe-hold", 600*time.Millisecond, "how long to hold each segment during -moza-led-probe")
 	mozaBaseRead := flag.Bool("moza-base-read", false, "read every wheelbase setting and print it, then exit (writes nothing)")
-	mozaBaseProbe := flag.String("moza-base-probe", "", "write-test one wheelbase setting: read it, write a lower value, read it back, restore. Takes a setting key, e.g. ffb_strength")
+	mozaBaseProbe := flag.String("moza-base-probe", "", "write-test wheelbase settings: read, write a lower value, read back, restore. Takes a setting key (e.g. ffb_strength) or \"all\" to sweep the first-write set one at a time, or \"apply\" to write the whole set in one grouped apply")
 	mozaBaseProbeTo := flag.Int("moza-base-probe-to", -1, "target value for -moza-base-probe; must be BELOW the current value (default: half of it)")
 	mozaProtocol := flag.String("moza-protocol", "auto", "rim LED protocol for -moza-test/-moza-led-probe: \"auto\" (detect), \"old\" (legacy rims), or \"new\" (ESX and other newer rims)")
 	voiceListen := flag.Bool("voice-listen", false, "record from the mic, transcribe on the voice server, and dry-run the pit plan (no trigger, applies nothing), then exit")

@@ -9,6 +9,7 @@ export {
 export {
     ConfigStatus,
     MonitorInfo,
+    MozaApplyResult,
     MozaBaseCommand,
     MozaBaseSnapshot,
     MozaStatus,
