@@ -9,8 +9,6 @@ import {
   colorForField,
   formatValue,
   formatBytes,
-  rgbToHex,
-  hexToRgb,
   gameFromSource,
   isFieldAvailable,
   isTabAvailable,
@@ -20,10 +18,10 @@ import {
 import Chart, { type Highlight } from "./Chart";
 import { TrackVisualizer } from "./TrackVisualizer";
 import OverlayPlacement, { type PlacementValue } from "./OverlayPlacement";
-import { CurveEditor, presetCurve } from "./CurveEditor";
 import StrategyApp from "./strategy/StrategyApp";
-import { AppHeader, ContextBar, TabBar, Stat, Empty, type StatTone } from "./design/Shell";
-import BasePanel from "./moza/BasePanel";
+import { AppHeader, ContextBar, TabBar, Stat, Empty, type StatTone, type Mode } from "./design/Shell";
+import { useWheelbase } from "./moza/useWheelbase";
+import HardwareApp from "./hardware/HardwareApp";
 
 const HISTORY_MS = 120000;
 
@@ -41,7 +39,6 @@ const TABS = [
   ["position", "Position"],
   ["recording", "Recording"],
   ["review", "Review"],
-  ["moza", "MOZA"],
   ["settings", "Settings"],
 ] as const;
 
@@ -49,7 +46,7 @@ export default function App() {
   // mode selects the top-level interface: the existing single-car dashboard, or
   // the multi-car Strategy Planner. It defaults to "dashboard" so nothing changes
   // for existing users; the planner is opt-in via the header toggle.
-  const [mode, setMode] = useState<"dashboard" | "strategy">("dashboard");
+  const [mode, setMode] = useState<Mode>("dashboard");
   const [activeTab, setActiveTab] = useState<string>("info");
   const [config, setConfig] = useState<any>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -68,6 +65,10 @@ export default function App() {
   const [learningButton, setLearningButton] = useState(false);
   const [mozaStatus, setMozaStatus] = useState<any>({ enabled: false, connected: false, port: "", model: "", serial: "", rpm_leds: 0, wheel: "", protocol: "" });
   const [testingLights, setTestingLights] = useState(false);
+  const [savedConfig, setSavedConfig] = useState<any>(null);
+  // Owned here rather than inside the Hardware mode so staged wheelbase changes
+  // survive leaving it; it reads the wheel only once that mode is opened.
+  const wheelbase = useWheelbase(mode === "hardware");
   const [mozaDevices, setMozaDevices] = useState<any[]>([]);
   const [monitor, setMonitor] = useState<{ width: number; height: number; name: string; detected: boolean }>({
     width: 1920,
@@ -224,7 +225,13 @@ export default function App() {
   // Telemetry + recording-status polling, mirroring the original 200ms / 1000ms cadence.
   useEffect(() => {
     let mounted = true;
-    Service.GetConfig().then((c) => mounted && setConfig(c)).catch((e) => setStatus(String(e), "error"));
+    Service.GetConfig()
+      .then((c) => {
+        if (!mounted) return;
+        setConfig(c);
+        setSavedConfig(structuredClone(c));
+      })
+      .catch((e) => setStatus(String(e), "error"));
     Service.GetConfigStatus()
       .then((s: any) => mounted && setConfigError(s?.error ? { path: s.path, error: s.error } : null))
       .catch(() => {});
@@ -266,6 +273,12 @@ export default function App() {
   }, [game, activeTab]);
 
   // --- Config form ---
+  // savedConfig is the last state written to disk, kept so the header can say
+  // how many settings are unsaved and Discard has something to go back to. A
+  // count is worth more than a dot: "3 app changes" tells you whether you can
+  // safely walk away.
+  const appChanges = useMemo(() => countChanges(savedConfig, config), [savedConfig, config]);
+
   const patch = (mutator: (c: any) => void) =>
     setConfig((c: any) => {
       const next = structuredClone(c);
@@ -304,7 +317,12 @@ export default function App() {
 
   async function saveConfig() {
     try {
-      await Service.SaveConfig(config);
+      // Apply first so the change is live, not only on disk: a saved config the
+      // running app is not using is the confusing half-state this avoids.
+      const updated = await Service.ApplyConfig(config);
+      await Service.SaveConfig(updated);
+      setConfig(updated);
+      setSavedConfig(structuredClone(updated));
       setStatus("Saved");
     } catch (e) {
       setStatus(String(e), "error");
@@ -518,7 +536,30 @@ export default function App() {
   // tabs). Render it instead of the dashboard when selected; all dashboard hooks
   // above have already run, so this conditional return is safe.
   if (mode === "strategy") {
-    return <StrategyApp onExit={() => setMode("dashboard")} />;
+    return <StrategyApp onMode={setMode} />;
+  }
+
+  // Hardware is the garage: the wheelbase's own stored settings and the rim's
+  // LEDs, configured with the game shut. It is a mode rather than a tab because
+  // every other page here is live telemetry.
+  if (mode === "hardware" && config) {
+    return (
+      <HardwareApp
+        config={config}
+        patch={patch}
+        onSave={saveConfig}
+        onDiscard={() => savedConfig && setConfig(structuredClone(savedConfig))}
+        appChanges={appChanges}
+        status={mozaStatus}
+        devices={mozaDevices}
+        onRescan={detectMoza}
+        onPreviewButtons={previewButtons}
+        onTestLights={testLights}
+        testingLights={testingLights}
+        wb={wheelbase}
+        onMode={setMode}
+      />
+    );
   }
 
   const live = snapshot?.available
@@ -529,7 +570,7 @@ export default function App() {
     <div className="app-shell">
       <AppHeader
         mode="dashboard"
-        onMode={(m) => m === "strategy" && setMode("strategy")}
+        onMode={setMode}
         source={live}
         recording={recordingStatus?.active ? String(recordingStatus.records ?? 0) + " rec" : null}
       >
@@ -746,90 +787,6 @@ export default function App() {
               <ReviewCharts history={reviewHistory} events={filteredEvents} />
             )}
             {report && <EventList events={filteredEvents} />}
-          </section>
-        )}
-
-        {activeTab === "moza" && config && (
-          <section className="tabpage active">
-            {/* Wheelbase configuration, read-only for now — see
-                docs/moza-boxflat-wheelbase-config/README.md. It sits above the
-                existing LED controls because both belong to one MOZA area, even
-                though they are separate modules internally. */}
-            <div className="page" style={{ padding: 0, marginBottom: "var(--s-7)" }}>
-              <BasePanel />
-            </div>
-            <div className="settings">
-              <div className="panel">
-                <h2>MOZA Output</h2>
-                <label className="check"><input type="checkbox" checked={config.moza.enabled} onChange={(e) => patch((c) => (c.moza.enabled = e.target.checked))} /> Enabled</label>
-                <label>Serial port <input autoComplete="off" placeholder="auto-detect" value={config.moza.port} onChange={(e) => patch((c) => (c.moza.port = e.target.value))} /></label>
-                <p className="hint">Leave blank to use the detected wheel automatically.</p>
-                <label>Update Hz <input type="number" min={1} step={1} value={config.moza.update_hz} onChange={(e) => patch((c) => (c.moza.update_hz = Number(e.target.value)))} /></label>
-                <label>RPM brightness <input type="range" min={0} max={15} value={config.moza.rpm_brightness} onChange={(e) => patch((c) => (c.moza.rpm_brightness = Number(e.target.value)))} /></label>
-                <label>RPM LEDs (rim) <input type="number" min={0} max={16} value={config.moza.rpm_leds ?? 0} onChange={(e) => patch((c) => (c.moza.rpm_leds = Number(e.target.value)))} /></label>
-                <p className="hint">Rev-light count on the rim. 0 = auto ({mozaStatus.rpm_leds || "default"}). Set this to match your rim if the lights look wrong — the rim model can't be detected over USB.</p>
-                <div className="curve-field">
-                  <span className="field-label">RPM curve</span>
-                  <CurveEditor
-                    points={config.moza.rpm_curve_points ?? []}
-                    colors={config.moza.rpm_colors}
-                    onChange={(pts) => patch((c) => (c.moza.rpm_curve_points = pts))}
-                  />
-                  <div className="curve-presets">
-                    {[["linear", "Linear"], ["exponential", "Exponential"], ["logarithmic", "Logarithmic"], ["scurve", "S-curve"]].map(([id, label]) => (
-                      <button key={id} type="button" className="secondary" onClick={() => patch((c) => (c.moza.rpm_curve_points = presetCurve(id)))}>{label}</button>
-                    ))}
-                  </div>
-                  <p className="hint">How RPM maps onto the rev-light bar (left = idle, right = max RPM; the colour strip shows where each LED sits). <strong>Drag</strong> a point to bend the curve, <strong>click</strong> empty space to add one, <strong>double-click</strong> to remove. Bow the curve below the diagonal to keep the green LEDs lit across a wider RPM range and squeeze red + redline into a small window near the top — handy when the engine rarely reaches 100% RPM. Presets just seed the points.</p>
-                </div>
-                <label>Button mask <input type="number" min={0} max={1023} value={config.moza.button_mask} onChange={(e) => patch((c) => (c.moza.button_mask = Number(e.target.value)))} /></label>
-                <div className="actions">
-                  <button className="secondary" onClick={previewButtons}>Preview Buttons</button>
-                  <button className="secondary" onClick={testLights} disabled={!mozaStatus.connected || testingLights} title={mozaStatus.connected ? "Sweep the rev lights to confirm they work" : "Connect a wheel first"}>
-                    {testingLights ? "Testing…" : "Test Lights"}
-                  </button>
-                </div>
-              </div>
-              <div className="panel">
-                <h2>Connected Wheel</h2>
-                <dl className="kv">
-                  <div><dt>Status</dt><dd>{!mozaStatus.enabled ? "Disabled" : mozaStatus.connected ? "Connected" : "Waiting for wheel…"}</dd></div>
-                  <div><dt>Wheel</dt><dd>{mozaStatus.connected ? (mozaStatus.wheel ? `${mozaStatus.wheel}${mozaStatus.protocol ? ` (${mozaStatus.protocol} protocol)` : ""}` : "Unknown rim") : "—"}</dd></div>
-                  <div><dt>Base</dt><dd>{mozaStatus.connected ? (mozaStatus.model || "Unrecognised MOZA") : "—"}</dd></div>
-                  <div><dt>Serial</dt><dd>{mozaStatus.connected && mozaStatus.serial ? mozaStatus.serial : "—"}</dd></div>
-                  <div><dt>RPM LEDs</dt><dd>{mozaStatus.connected ? mozaStatus.rpm_leds : "—"}</dd></div>
-                </dl>
-                <h3 className="subhead">Detected over USB</h3>
-                <p className="hint">MOZA wheels found on the system. Use one to fill the serial port automatically.</p>
-                {mozaDevices.length === 0 ? (
-                  <p className="hint">No MOZA wheel detected.</p>
-                ) : (
-                  <ul className="device-list">
-                    {mozaDevices.map((d: any) => (
-                      <li key={d.port}>
-                        <button
-                          className={config.moza.port === d.port ? "" : "secondary"}
-                          onClick={() => patch((c) => (c.moza.port = d.port))}
-                        >
-                          {d.model} <span className="muted">· {d.port}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <button className="secondary" onClick={detectMoza}>Rescan</button>
-              </div>
-            </div>
-            <section className="colorgrid">
-              <div>
-                <h2>RPM Colors</h2>
-                <ColorSwatches colors={config.moza.rpm_colors} onChange={(i, rgb) => patch((c) => (c.moza.rpm_colors[i] = rgb))} />
-              </div>
-              <div>
-                <h2>Button Colors</h2>
-                <ColorSwatches colors={config.moza.button_colors} onChange={(i, rgb) => patch((c) => (c.moza.button_colors[i] = rgb))} />
-              </div>
-            </section>
           </section>
         )}
 
@@ -1431,17 +1388,22 @@ function ReviewCharts({ history, events }: { history: HistorySample[]; events: a
   );
 }
 
-function ColorSwatches({ colors, onChange }: { colors: number[][]; onChange: (index: number, rgb: number[]) => void }) {
-  return (
-    <div className="swatches">
-      {colors.map((rgb, index) => (
-        <label className="swatch" key={index}>
-          <span>{String(index + 1).padStart(2, "0")}</span>
-          <input type="color" value={rgbToHex(rgb)} onChange={(e) => onChange(index, hexToRgb(e.target.value))} />
-        </label>
-      ))}
-    </div>
-  );
+/** countChanges counts the leaf values that differ between the saved config and
+ *  the working one. Leaves rather than objects, so editing one RPM colour counts
+ *  as one change and not as "moza changed". */
+function countChanges(saved: any, current: any): number {
+  if (!saved || !current) return 0;
+  let n = 0;
+  const walk = (a: any, b: any) => {
+    if (a === b) return;
+    if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
+      n += 1;
+      return;
+    }
+    for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) walk(a[key], b[key]);
+  };
+  walk(saved, current);
+  return n;
 }
 
 function TrackPanel({ history, currentIndex, onClear }: { history: HistorySample[]; currentIndex: number; onClear: () => void }) {

@@ -2,7 +2,7 @@
 // non-driving partner uses while their team-mate drives. It is intentionally
 // self-contained: its own top bar, its own tab set, and its own polling loop, so
 // the existing single-car dashboard in App.tsx is left completely untouched. The
-// header toggle (onExit) flips back to the dashboard.
+// header toggle (onMode) leaves for whichever interface was picked.
 //
 // It polls one method, Service.GetEngineerState(), which returns the whole
 // game-agnostic SessionState (every car + globals) already shaped by the Go
@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { Service } from "../../bindings/telemetry-handler/app";
 import "./strategy.css";
 import { type SessionState, type CarState, formatLapTime } from "./model";
-import { AppHeader, ContextBar, TabBar, Empty, type Fact } from "../design/Shell";
+import { AppHeader, ContextBar, TabBar, Empty, type Fact, type Mode } from "../design/Shell";
 import { useSettings } from "./useSettings";
 import RacePopups from "./components/RacePopups";
 import TrackCircle from "./components/TrackCircle";
@@ -89,7 +89,7 @@ function sessionKind(t: number): string {
   return "TEST DAY";
 }
 
-export default function StrategyApp({ onExit }: { onExit: () => void }) {
+export default function StrategyApp({ onMode }: { onMode: (mode: Mode) => void }) {
   const [activeTab, setActiveTab] = useState<string>("strategy");
   const [state, setState] = useState<SessionState | null>(null);
   const [settings, updateSettings] = useSettings();
@@ -119,7 +119,7 @@ export default function StrategyApp({ onExit }: { onExit: () => void }) {
     <div className="app-shell strategy">
       <AppHeader
         mode="strategy"
-        onMode={(m) => m === "dashboard" && onExit()}
+        onMode={onMode}
         source={available ? { label: "LMU · LIVE", rate: `${state?.cars.length ?? 0} cars` } : null}
       />
 

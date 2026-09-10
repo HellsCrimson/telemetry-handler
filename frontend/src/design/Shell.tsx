@@ -7,14 +7,20 @@
 import type { ReactNode } from "react";
 import { UI_SCALES, useUIScale } from "./useUIScale";
 
-export type Mode = "dashboard" | "strategy";
+/** The three top-level interfaces. They are separated by WHEN you use them
+ *  rather than by subject: the dashboard and the pit wall are live telemetry for
+ *  a driver and a strategist, and hardware is the garage — configured once and
+ *  never looked at while driving. */
+export type Mode = "dashboard" | "strategy" | "hardware";
 
 interface HeaderProps {
   version?: string;
   mode: Mode;
   onMode: (mode: Mode) => void;
-  /** Source status: the game feeding telemetry, if any. */
-  source?: { label: string; rate?: string } | null;
+  /** Source status: the game feeding telemetry, if any. `false` hides the chip
+   *  entirely — on a screen used with the game deliberately shut, a permanent
+   *  NO SIGNAL is both true and useless. */
+  source?: { label: string; rate?: string } | null | false;
   /** Recording status, shown only while recording. */
   recording?: string | null;
   /** Extra facts rendered between the mode toggle and the status chips. */
@@ -37,6 +43,9 @@ export function AppHeader({ version, mode, onMode, source, recording, children }
         <button aria-pressed={mode === "strategy"} onClick={() => onMode("strategy")}>
           Strategy Planner
         </button>
+        <button aria-pressed={mode === "hardware"} onClick={() => onMode("hardware")}>
+          Hardware
+        </button>
       </div>
 
       {children}
@@ -45,7 +54,7 @@ export function AppHeader({ version, mode, onMode, source, recording, children }
       {/* Source state is the first thing to check when something looks wrong, so
        * it is always present — as an explicit "no signal" chip when idle rather
        * than an absence the user has to notice. */}
-      {source ? (
+      {source === false ? null : source ? (
         <div className="chip live">
           <span className="dot" />
           <span>{source.label}</span>

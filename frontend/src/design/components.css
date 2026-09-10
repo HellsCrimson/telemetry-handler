@@ -14,6 +14,14 @@
   font: var(--t-ui);
 }
 
+/* A shell whose body is a side rail plus a pane, rather than a stack of full
+ * width sections. The rail has to reach the bottom of the window even when the
+ * pane is short, or it reads as a floating box instead of a frame. */
+.app-shell.split {
+  display: flex;
+  flex-direction: column;
+}
+
 /* Header: identity, mode toggle, live/recording status. Fixed 48px. */
 .app-header {
   display: flex;

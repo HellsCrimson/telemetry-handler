@@ -241,8 +241,23 @@ func (c BaseCommand) decode(payload []byte) (int, error) {
 // the YAML is how "hands-off protection" first appeared here as a 0..100 slider
 // when it is a switch.
 //
-// Nothing has been confirmed against an R12 V2 yet, so Verified stays false
-// throughout and the safety-critical commands keep the tightest bounds.
+// Verified means the conversion is known, from one of two sources, and each
+// entry says which where it matters:
+//
+//   - OBSERVED on a real R12 V2 against Boxflat's display (the M2 side-by-side).
+//   - READ FROM BOXFLAT'S UI SOURCE (boxflat/panels/base.py), which is where the
+//     slider bounds and the set_expression/set_reverse_expression transforms
+//     actually live. In that file `expression` is display -> raw (the write) and
+//     `reverse_expression` is raw -> display (the read).
+//
+// A single observed point is NOT a confirmed conversion. Soft limit stiffness
+// and road sensitivity were both "confirmed" at one reading where the wrong
+// formula happened to agree with the right one, and both were writing wrong
+// values everywhere else until the source was read. A test pins each at a
+// second point for that reason.
+//
+// The one command still unverified (natural_inertia_enabled) is in serial.yml
+// but bound to no control in Boxflat's UI, so nothing says what it does.
 var baseCommands = []BaseCommand{
 	// --- Safety envelope. Written first by a grouped apply, so that an apply
 	// interrupted part-way leaves the base more restricted rather than less.
@@ -263,7 +278,10 @@ var baseCommands = []BaseCommand{
 
 	// --- Force feedback.
 	{Key: "ffb_strength", Name: "Game FFB strength", ID: []uint8{0x02}, Bytes: 2, Min: 0, Max: 100, Unit: "%", Scale: 0.1, Verified: true},
-	{Key: "ffb_reverse", Name: "FFB reverse", ID: []uint8{0x18}, Bytes: 2, Kind: KindBool},
+	{
+		Key: "ffb_reverse", Name: "FFB reverse", ID: []uint8{0x18}, Bytes: 2, Kind: KindBool, Verified: true,
+		Note: "flips the direction of every force — only for a game that sends it inverted",
+	},
 
 	// --- Mechanical feel.
 	{Key: "damper", Name: "Wheel damper", ID: []uint8{0x07}, Bytes: 2, Min: 0, Max: 100, Unit: "%", Scale: 0.1, Verified: true},
@@ -282,21 +300,36 @@ var baseCommands = []BaseCommand{
 	{
 		Key: "natural_inertia", Name: "Steering wheel inertia", ID: []uint8{0x13}, Bytes: 2,
 		Min: 100, Max: 4000, Verified: true,
-		Note: "unscaled, unlike the other inertia setting",
+		Note: "unscaled; takes effect with hands-off protection on (Boxflat greys it out otherwise)",
 	},
-	{Key: "natural_inertia_enabled", Name: "Natural inertia enable", ID: []uint8{0x16}, Bytes: 2, Kind: KindBool},
+	{
+		// Deliberately NOT verified. serial.yml lists it (under a "hands-off
+		// protection" comment) but no control in Boxflat's UI is bound to it, so
+		// there is no evidence of what it does or how it is encoded. Writing an
+		// orphan command on a guess is the one thing this registry exists to stop.
+		Key: "natural_inertia_enabled", Name: "Natural inertia enable", ID: []uint8{0x16}, Bytes: 2, Kind: KindBool,
+		Note: "in Boxflat's command list but used by none of its controls, so its meaning is unknown",
+	},
 
 	// --- Speed-dependent damping.
 	{Key: "speed_damping", Name: "Damping level", ID: []uint8{0x19}, Bytes: 2, Min: 0, Max: 100, Unit: "%", Verified: true},
 	{
 		Key: "speed_damping_point", Name: "Trigger speed", ID: []uint8{0x1a}, Bytes: 2,
-		Min: 0, Max: 400, Unit: "km/h",
-		Note: "range uncertain; prefer keeping the device's own readback until confirmed",
+		Min: 0, Max: 400, Unit: "km/h", Verified: true,
+		Note: "unscaled 0..400, per Boxflat's slider",
 	},
 
 	// --- Soft limit.
-	{Key: "soft_limit_stiffness", Name: "Soft limit stiffness", ID: []uint8{0x1f}, Bytes: 2, Min: 1, Max: 10, Scale: 0.01, Verified: true},
-	{Key: "soft_limit_retain", Name: "Soft limit retains game force", ID: []uint8{0x1c}, Bytes: 2, Kind: KindBool},
+	{
+		// AFFINE, from Boxflat's source: raw = d*(400/9) - 400/9 + 100, so the
+		// slider's 1..10 lands on 100..500 and Boxflat's reset default of 278 is 5.
+		// This was once Scale 0.01, "confirmed" by a base reading 100 as 1 — the
+		// one point where both formulas agree. Every other value was written
+		// wrong: 10 went out as 1000, twice the top of the real range.
+		Key: "soft_limit_stiffness", Name: "Soft limit stiffness", ID: []uint8{0x1f}, Bytes: 2,
+		Min: 1, Max: 10, Scale: 9.0 / 400.0, Offset: -1.25, Verified: true,
+	},
+	{Key: "soft_limit_retain", Name: "Soft limit retains game force", ID: []uint8{0x1c}, Bytes: 2, Kind: KindBool, Verified: true},
 	{
 		// Affine rather than scaled: the three positions are 56, 78 and 100 on the
 		// wire (Boxflat writes index*22+56). Confirmed by a base set to Middle
@@ -310,27 +343,38 @@ var baseCommands = []BaseCommand{
 	// ids exist on newer 10-band firmware and are gated behind capability
 	// detection rather than assumed present.
 	{
+		// AFFINE, from Boxflat's source: raw = d*4 + 10, so 0..10 is 10..50. Once
+		// Scale 0.2, "confirmed" by a base reading 50 as 10 — again the one point
+		// where the wrong formula agrees. Road sensitivity 0 was being written as
+		// raw 0, which is below anything Boxflat ever sends.
+		//
+		// Affects is kept for its ORDERING, which is harmless either way, but the
+		// macro is unconfirmed: Boxflat writes an EQ preset itself whenever this
+		// slider moves (_set_eq_preset), which is what was observed. Whether the
+		// firmware ALSO moves the bands on its own is what decides whether this app
+		// must write the preset too. Test: write only road sensitivity from this
+		// app, re-read, and see whether the bands moved.
 		Key: "road_sensitivity", Name: "Road sensitivity", ID: []uint8{0x0c}, Bytes: 2,
-		Min: 0, Max: 10, Scale: 0.2, Verified: true,
+		Min: 0, Max: 10, Scale: 0.25, Offset: -2.5, Verified: true,
 		Affects: []string{"equalizer1", "equalizer2", "equalizer3", "equalizer4", "equalizer5", "equalizer6"},
-		Note:    "a macro: changing it also rewrites the equalizer bands (confirmed against Boxflat on an R12 V2)",
+		Note:    "Boxflat also rewrites the equalizer bands when this moves; whether the base does so itself is unconfirmed",
 	},
-	{Key: "equalizer1", Name: "Equalizer 5 Hz", ID: []uint8{0x0e}, Bytes: 2, Min: 0, Max: 400},
-	{Key: "equalizer2", Name: "Equalizer 15 Hz", ID: []uint8{0x0f}, Bytes: 2, Min: 0, Max: 400},
-	{Key: "equalizer3", Name: "Equalizer 25 Hz", ID: []uint8{0x10}, Bytes: 2, Min: 0, Max: 400},
-	{Key: "equalizer4", Name: "Equalizer 40 Hz", ID: []uint8{0x11}, Bytes: 2, Min: 0, Max: 400},
-	{Key: "equalizer5", Name: "Equalizer 60 Hz", ID: []uint8{0x14}, Bytes: 2, Min: 0, Max: 400},
-	{Key: "equalizer6", Name: "Equalizer 100 Hz", ID: []uint8{0x2c}, Bytes: 2, Min: 0, Max: 400},
+	{Key: "equalizer1", Name: "Equalizer 10 Hz", ID: []uint8{0x0e}, Bytes: 2, Min: 0, Max: 400, Unit: "%", Verified: true},
+	{Key: "equalizer2", Name: "Equalizer 15 Hz", ID: []uint8{0x0f}, Bytes: 2, Min: 0, Max: 400, Unit: "%", Verified: true},
+	{Key: "equalizer3", Name: "Equalizer 25 Hz", ID: []uint8{0x10}, Bytes: 2, Min: 0, Max: 400, Unit: "%", Verified: true},
+	{Key: "equalizer4", Name: "Equalizer 40 Hz", ID: []uint8{0x11}, Bytes: 2, Min: 0, Max: 400, Unit: "%", Verified: true},
+	{Key: "equalizer5", Name: "Equalizer 60 Hz", ID: []uint8{0x14}, Bytes: 2, Min: 0, Max: 400, Unit: "%", Verified: true},
+	{Key: "equalizer6", Name: "Equalizer 100 Hz", ID: []uint8{0x2c}, Bytes: 2, Min: 0, Max: 400, Unit: "%", Verified: true},
 
 	// --- Protection.
 	{
-		Key: "protection", Name: "Hands-off protection", ID: []uint8{0x0d}, Bytes: 2, Kind: KindBool,
+		Key: "protection", Name: "Hands-off protection", ID: []uint8{0x0d}, Bytes: 2, Kind: KindBool, Verified: true,
 		Note: "a switch in Boxflat, not a strength",
 	},
 	{
 		Key: "protection_mode", Name: "Protection mode", ID: []uint8{0x2d}, Bytes: 2, Kind: KindEnum,
-		Min: 1, Max: 2, Labels: []string{"Mode 1", "Mode 2"},
-		Note: "values are 1-based: a base set to Mode 2 reports 2. Command id 0x2d is unrelated to the event group 0x2d",
+		Min: 1, Max: 2, Labels: []string{"Mode 1", "Mode 2"}, Verified: true,
+		Note: "1-based (a base on Mode 2 reports 2); takes effect with hands-off protection on",
 	},
 	// --- Main device. Boxflat shows these on the same pages, but they are a
 	// different device and use one group with a different id per direction.
@@ -338,8 +382,10 @@ var baseCommands = []BaseCommand{
 		Key: "interpolation", Name: "FFB interpolation", Bytes: 1,
 		Device: mainDevice, ReadGroup: mainGroup, WriteGroup: mainGroup,
 		ReadID: []uint8{0x4d}, WriteID: []uint8{0x4c},
-		Min: 0, Max: 10,
-		Note: "range not yet confirmed",
+		// Tenths, from Boxflat's source (expression *10). Previously passed through
+		// unscaled, which agrees only at 0 — Boxflat's default, so it looked right.
+		Min: 0, Max: 10, Scale: 0.1, Verified: true,
+		Note: "Boxflat's own label for it is \"mostly causes issues\"",
 	},
 	{
 		Key: "game_damper", Name: "Game damper", Bytes: 1,
@@ -366,18 +412,24 @@ var baseCommands = []BaseCommand{
 		Min: 0, Max: 100, Unit: "%", Scale: gainScale, Verified: true,
 	},
 
-	// --- FFB curve. Five Y points plus one adjustable X, which is what Boxflat
-	// exposes; ids 0x22 0x02..0x04 exist for further X points but no UI offers
-	// them, so they stay out until something is known about their meaning.
+	// --- FFB curve. Output at five input positions, plus "stronger around
+	// center", which slides the first point left. The x positions of points 2..4
+	// (ids 0x22 0x02..0x04) are fixed at 40/60/80 by every Boxflat preset and no
+	// control moves them, so they stay out.
 	{
+		// Inverted, from Boxflat's source: raw = 20 - d, so the slider's 0..18
+		// moves the first curve point from 20% input down to 2%. A negative scale
+		// is the honest encoding — d rises as raw falls.
 		Key: "ffb_curve_x1", Name: "Stronger around center", ID: []uint8{0x22, 0x01}, Bytes: 1,
-		Min: 0, Max: 100,
+		Min: 0, Max: 18, Scale: -1, Offset: 20, Verified: true,
+		Note: "moves the first curve point left of 20% input",
 	},
-	{Key: "ffb_curve_y1", Name: "FFB curve point 1", ID: []uint8{0x22, 0x05}, Bytes: 1, Min: 0, Max: 100},
-	{Key: "ffb_curve_y2", Name: "FFB curve point 2", ID: []uint8{0x22, 0x06}, Bytes: 1, Min: 0, Max: 100},
-	{Key: "ffb_curve_y3", Name: "FFB curve point 3", ID: []uint8{0x22, 0x07}, Bytes: 1, Min: 0, Max: 100},
-	{Key: "ffb_curve_y4", Name: "FFB curve point 4", ID: []uint8{0x22, 0x08}, Bytes: 1, Min: 0, Max: 100},
-	{Key: "ffb_curve_y5", Name: "FFB curve point 5", ID: []uint8{0x22, 0x09}, Bytes: 1, Min: 0, Max: 100},
+	{Key: "ffb_curve_y1", Name: "Curve output · first point", ID: []uint8{0x22, 0x05}, Bytes: 1, Min: 0, Max: 100, Unit: "%", Verified: true,
+		Note: "at 20% input, or further left with stronger around center"},
+	{Key: "ffb_curve_y2", Name: "Curve output · 40% input", ID: []uint8{0x22, 0x06}, Bytes: 1, Min: 0, Max: 100, Unit: "%", Verified: true},
+	{Key: "ffb_curve_y3", Name: "Curve output · 60% input", ID: []uint8{0x22, 0x07}, Bytes: 1, Min: 0, Max: 100, Unit: "%", Verified: true},
+	{Key: "ffb_curve_y4", Name: "Curve output · 80% input", ID: []uint8{0x22, 0x08}, Bytes: 1, Min: 0, Max: 100, Unit: "%", Verified: true},
+	{Key: "ffb_curve_y5", Name: "Curve output · 100% input", ID: []uint8{0x22, 0x09}, Bytes: 1, Min: 0, Max: 100, Unit: "%", Verified: true},
 
 	// --- Indicators and startup music. Read here for completeness; the music
 	// commands live in group 0x2a, which also carries calibration, so nothing in
@@ -402,14 +454,14 @@ var baseCommands = []BaseCommand{
 		Key: "music_index", Name: "Startup music track", Bytes: 1,
 		ReadGroup: musicGroup, WriteGroup: musicGroup,
 		ReadID: []uint8{0x43, 0x02}, WriteID: []uint8{0x43, 0x01},
-		Min: 1, Max: 20, Verified: true,
-		Note: "1-based track index; the upper bound is a guess, the base's track count is unknown",
+		Min: 1, Max: 10, Verified: true,
+		Note: "1-based; Boxflat offers ten tracks",
 	},
 
 	{
 		Key: "performance_output", Name: "Temperature control strategy", ID: []uint8{0x1e}, Bytes: 2, Kind: KindEnum,
-		Min: 0, Max: 1, Labels: []string{"Conservative", "Radical"},
-		Note: "Boxflat calls this temp strategy; Pit House labels it performance output",
+		Min: 0, Max: 1, Labels: []string{"Conservative", "Radical"}, Verified: true,
+		Note: "Conservative holds the motor to 50°C, Radical to 60°C",
 	},
 }
 

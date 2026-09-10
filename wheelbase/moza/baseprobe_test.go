@@ -74,15 +74,17 @@ func TestProbeLowerRefusesToRaise(t *testing.T) {
 // An unconfirmed conversion means we do not know what number actually reaches
 // the hardware, so "write 20" could land as 200.
 func TestProbeLowerRefusesUnverifiedConversions(t *testing.T) {
-	cmd, ok := LookupBaseCommand("interpolation")
+	// natural_inertia_enabled is the registry's one deliberately unverified
+	// command: listed by Boxflat, bound to none of its controls.
+	cmd, ok := LookupBaseCommand("natural_inertia_enabled")
 	if !ok {
-		t.Skip("interpolation not in the registry")
+		t.Skip("natural_inertia_enabled not in the registry")
 	}
 	if cmd.Verified {
-		t.Skip("interpolation is now verified; pick another unverified command for this test")
+		t.Skip("natural_inertia_enabled is now verified; pick another unverified command for this test")
 	}
 	p := newEchoPort(t, map[uint8]int{})
-	_, err := ProbeLower(probeClient(p), "interpolation", 1)
+	_, err := ProbeLower(probeClient(p), "natural_inertia_enabled", 0)
 	if err == nil || !strings.Contains(err.Error(), "not confirmed") {
 		t.Errorf("expected a refusal citing the unconfirmed conversion, got %v", err)
 	}
@@ -202,15 +204,15 @@ func TestProbeSweepRestoresEachBeforeTheNext(t *testing.T) {
 // failure — it is the harness declining to write a number it cannot vouch for.
 func TestProbeSweepSkipsRatherThanGuesses(t *testing.T) {
 	p := newEchoPort(t, map[uint8]int{0x02: 450})
-	result, err := ProbeSweep(probeClient(p), []string{"ffb_strength", "interpolation"})
+	result, err := ProbeSweep(probeClient(p), []string{"ffb_strength", "natural_inertia_enabled"})
 	if err != nil {
 		t.Fatalf("ProbeSweep: %v", err)
 	}
 	if len(result.Reports) != 1 {
 		t.Errorf("expected one probe, got %d", len(result.Reports))
 	}
-	if len(result.Skipped) != 1 || result.Skipped[0].Key != "interpolation" {
-		t.Errorf("interpolation should have been skipped, got %+v", result.Skipped)
+	if len(result.Skipped) != 1 || result.Skipped[0].Key != "natural_inertia_enabled" {
+		t.Errorf("natural_inertia_enabled should have been skipped, got %+v", result.Skipped)
 	}
 	if !result.Ok() {
 		t.Error("a skip is not a failure")

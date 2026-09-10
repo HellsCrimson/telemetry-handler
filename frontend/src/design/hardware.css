@@ -1,0 +1,406 @@
+/* The Hardware section — artboard set 3.
+ *
+ * Its own sheet because the section introduces three pieces the telemetry
+ * screens have no use for, and all three carry meaning rather than decoration:
+ *
+ *   Device rail   Presence. One row per attached device, each with its own
+ *                 state dot and its own staged count, so the section scales to
+ *                 five devices without inventing tabs. Rig-level pages sit
+ *                 below a hairline because they belong to no single device.
+ *
+ *   Base channel  The darker strip with the device gutter. Everything inside it
+ *                 writes THE WHEELBASE'S OWN MEMORY, which survives restarts
+ *                 and this app being uninstalled. The header's Save writes the
+ *                 app's config file and never touches hardware. Two species of
+ *                 write, two channels, and they must not be confusable.
+ *
+ *   Setting row   32px, denser than the telemetry field row, because there are
+ *                 41 of them and half are read-only. A read-only row KEEPS ITS
+ *                 ROW: same height, same label column, with the reason the base
+ *                 gave where the control would be and an RO tick in the gutter.
+ *                 Inert, not broken.
+ */
+
+/* --- Device rail ---------------------------------------------------------- */
+
+.dev-rail {
+  width: 208px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-inset);
+  border-right: 1px solid var(--line);
+}
+
+.dev-rail-head {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--s-6);
+  border-bottom: 1px solid var(--line);
+  font: var(--t-label);
+  letter-spacing: var(--ls-label);
+  color: var(--ink-lo);
+}
+
+.dev-rail-head .count {
+  margin-left: auto;
+  font: 400 9.5px var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.dev-rail-list { padding: var(--s-3) 0; }
+
+.dev-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--s-6);
+  background: none;
+  border: 0;
+  border-left: 2px solid transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dev-row:hover { background: var(--bg-row-alt); }
+
+.dev-row[aria-selected="true"] {
+  background: var(--bg-row-hover);
+  border-left-color: var(--ink-hi);
+}
+
+.dev-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--ink-faint);
+}
+
+.dev-row.online .dot { background: var(--sem-good); }
+
+.dev-row .body { flex: 1; min-width: 0; }
+
+.dev-row .name {
+  display: block;
+  font: 400 11.5px var(--font-sans);
+  color: var(--ink-mid);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dev-row[aria-selected="true"] .name { font-weight: 500; color: var(--ink-hi); }
+
+.dev-row .meta {
+  display: block;
+  font: 400 9.5px var(--font-mono);
+  color: var(--ink-lo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The staged count travels with the device, so leaving a device's tab cannot
+ * hide that something is waiting to be written to it. */
+.dev-row .badge {
+  font: 600 9px var(--font-mono);
+  letter-spacing: 0.05em;
+  color: var(--sem-warn);
+}
+
+.dev-rail-foot {
+  margin-top: auto;
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.dev-rail-foot .dev-row { height: 30px; }
+.dev-rail-foot .dev-row .name { font-size: 11px; }
+.dev-rail-foot .dev-row .dot { border-radius: 0; }
+.dev-rail-foot .dev-row:disabled { cursor: default; }
+.dev-rail-foot .dev-row:disabled .name { color: var(--ink-faint); }
+.dev-rail-foot .dev-row:disabled:hover { background: none; }
+
+/* An attention mark: something on that rig-level page needs a look. */
+.dev-rail-foot .attn {
+  width: 6px;
+  height: 6px;
+  background: var(--sem-warn);
+}
+
+.dev-rail-empty {
+  margin: var(--s-7) var(--s-6);
+  padding: var(--s-7) var(--s-5);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-inner);
+  text-align: center;
+}
+
+/* --- The base channel ----------------------------------------------------- */
+
+.base-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  min-height: 52px;
+  padding: 0 var(--s-7);
+  background: #101318;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+}
+
+.base-strip .who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 500 11.5px var(--font-sans);
+  color: var(--ink-hi);
+}
+
+.base-strip .who .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sem-good);
+}
+
+.base-strip .who .meta {
+  font: 400 10.5px var(--font-mono);
+  color: var(--ink-lo);
+}
+
+/* The line that replaces a legend panel. It says what this channel writes at
+ * the moment you are looking at the button, which is when it matters. */
+.base-strip .channel {
+  font: 600 9.5px var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--ink-mid);
+}
+
+.base-strip.offline { border-left-color: var(--line); }
+.base-strip.offline .who { color: var(--ink-mid); }
+.base-strip.offline .who .dot { background: var(--ink-lo); animation: hw-pulse 1.8s ease-in-out infinite; }
+
+@keyframes hw-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Outlined and mono, deliberately unlike the header's filled Save: the two
+ * write to different places and must not read as the same button. */
+.btn-write {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  height: 28px;
+  padding: 0 var(--s-6);
+  background: var(--bg-inset);
+  border: 1px solid #4a5464;
+  border-radius: var(--radius-inner);
+  font: 600 10.5px var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--ink-hi);
+  cursor: pointer;
+}
+
+.btn-write:hover:not(:disabled) { border-color: #8a94a3; background: #151a20; }
+.btn-write:disabled { color: var(--ink-faint); border-color: var(--line); cursor: default; }
+
+.staged-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 22px;
+  padding: 0 var(--s-4);
+  background: color-mix(in oklch, var(--sem-warn) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--sem-warn) 35%, transparent);
+  border-radius: var(--radius-inner);
+  font: 600 9.5px var(--font-mono);
+  letter-spacing: 0.07em;
+  color: var(--sem-warn);
+}
+
+.staged-chip .mark { width: 6px; height: 6px; background: var(--sem-warn); }
+
+/* The header's counterpart: app config, ink grey, never amber. Amber on this
+ * page means "not yet on the wheel" and must not also mean "not yet on disk". */
+.app-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  padding: 0 var(--s-4);
+  background: #171b21;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-inner);
+  font: 600 9.5px var(--font-mono);
+  letter-spacing: 0.07em;
+  color: var(--ink);
+}
+
+.app-chip .mark { width: 6px; height: 6px; background: var(--ink-mid); }
+
+/* --- Filter bar ----------------------------------------------------------- */
+
+.set-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--s-7);
+  height: 34px;
+  padding: 0 var(--s-7);
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--line);
+  font: 400 10.5px var(--font-mono);
+  color: var(--ink-mid);
+}
+
+.set-filter .hint {
+  margin-left: auto;
+  font: 400 10.5px var(--font-sans);
+  color: var(--ink-lo);
+}
+
+.set-filter input {
+  height: 24px;
+  width: 190px;
+  padding: 0 var(--s-4);
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-inner);
+  font: 400 11px var(--font-sans);
+  color: var(--ink-hi);
+}
+
+.set-filter input:focus { outline: none; border-color: var(--line-strong); }
+.set-filter input::placeholder { color: var(--ink-lo); }
+
+/* --- Setting row ---------------------------------------------------------- */
+
+.set-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--set-cols, 3), minmax(0, 1fr));
+  gap: var(--s-7);
+  padding: var(--s-7);
+  align-items: start;
+}
+
+.set-col { display: flex; flex-direction: column; gap: var(--s-7); }
+
+/* Which store a panel writes to, stated on the panel rather than in a legend
+ * off to the side. Nothing on screen writes to two places at once, so the badge
+ * is never ambiguous and costs one line per panel instead of a column. */
+.target-badge {
+  font: 500 8.5px var(--font-mono);
+  letter-spacing: 0.07em;
+  padding: 2px 5px;
+  border-radius: var(--radius-inner);
+  color: var(--ink-mid);
+  border: 1px solid var(--line-strong);
+}
+
+.target-badge.base { color: var(--ink); border-color: #4a5464; }
+
+.set-body { padding: var(--s-2) var(--s-6) var(--s-4); }
+
+.set-row {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr) 52px 26px;
+  gap: 0 var(--s-5);
+  align-items: center;
+  min-height: 32px;
+  padding-left: var(--s-4);
+  margin-left: calc(-1 * var(--s-6));
+  border-bottom: 1px solid var(--line-soft);
+  border-left: 2px solid transparent;
+}
+
+.set-row:last-child { border-bottom: 0; }
+.set-row:hover { background: var(--bg-row-alt); }
+
+.set-row .set-label {
+  font: 400 11px/1.3 var(--font-sans);
+  color: var(--ink);
+  padding: 3px 0;
+}
+
+.set-row .set-control {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.set-row .set-note {
+  font: 400 9.5px/1.3 var(--font-sans);
+  color: var(--ink-lo);
+  min-width: 0;
+  padding: 3px 0;
+}
+
+.set-row .set-gutter {
+  text-align: right;
+  font: 500 9.5px var(--font-mono);
+  letter-spacing: 0.05em;
+  color: var(--ink-faint);
+}
+
+/* Staged: this value is not on the wheel yet. The only amber in the section
+ * apart from hardware state. */
+.set-row.staged { border-left-color: var(--sem-warn); }
+.set-row.staged .set-gutter { color: var(--sem-warn); }
+
+/* Read-only keeps its row. The reason the base gave takes the control's place,
+ * underlined so it reads as an explanation rather than a value. */
+.set-row.ro .set-label { color: var(--ink-mid); }
+
+.set-row.ro .set-reason {
+  font: 400 9.5px/1.3 var(--font-sans);
+  color: var(--ink-lo);
+  border-bottom: 1px dashed var(--line);
+  padding: 3px 0 2px;
+}
+
+.set-value {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 24px;
+  padding: 0 var(--s-3);
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-inner);
+}
+
+.set-value input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  text-align: right;
+  background: none;
+  border: 0;
+  font: 400 11px var(--font-mono);
+  color: var(--ink-hi);
+  font-variant-numeric: tabular-nums;
+}
+
+.set-value input:focus { outline: none; }
+.set-value input::-webkit-outer-spin-button,
+.set-value input::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.set-value input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.set-value .unit { font: 400 9px var(--font-mono); color: var(--ink-lo); }
+.set-value:focus-within { border-color: #4a5464; }
+
+.set-value.staged { border-color: var(--sem-warn); }
+.set-value.staged input { color: var(--sem-warn); }
+
+.set-value.flat { background: #0d1014; border-color: var(--line-soft); }
+.set-value.flat input { color: var(--ink-mid); }
+
+/* A value outside its own declared range, or a choice the labels do not cover.
+ * Shown as itself: a control that quietly shows the wrong state is worse than
+ * one that admits it does not know. */
+.set-value.odd input { color: var(--sem-warn); }

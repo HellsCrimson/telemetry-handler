@@ -505,3 +505,44 @@
 
 .scale-picker:hover select { color: var(--ink); }
 .scale-picker::after { right: 6px; }
+
+/* --- LED colour swatch ---------------------------------------------------- */
+
+/* The rim's LED colours are picked freely rather than from the semantic ramp.
+ * These end up on physical lights a metre from the driver's eye, judged against
+ * the car's own dash rather than against this app's palette — `Swatches` above,
+ * which does constrain to the ramp, is for colour used INSIDE the interface.
+ *
+ * The native colour input is kept, because it brings the platform's picker with
+ * it; only its chrome is removed, so the control IS the colour rather than a
+ * box containing it.
+ */
+.led-swatch {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.led-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+
+.led-swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.led-swatch::-moz-color-swatch { border: 0; border-radius: 2px; }
+
+.led-swatch:hover { box-shadow: 0 0 0 2px var(--ink-hi); }
+
+.led-swatch.small { width: 20px; height: 20px; flex: none; }
+
+/* An unlit button: still shown, because the mask is what makes it dark and that
+ * is a setting on this page, not an absence. */
+.led-swatch.unlit { opacity: 0.3; }

@@ -426,8 +426,24 @@ func TestScalingMatchesTheHardware(t *testing.T) {
 		// the setting can actually hold — 325 is what a real base reported.
 		{"inertia", 3250, 325, "stored in tenths"},
 		{"natural_inertia", 900, 900, "unscaled, unlike the other inertia"},
-		{"road_sensitivity", 50, 10, "five raw steps per displayed step"},
-		{"soft_limit_stiffness", 100, 1, "stored in hundredths"},
+		// Road sensitivity and soft limit stiffness are AFFINE, and each is pinned
+		// at two points on purpose. Both were once "confirmed" at a single reading
+		// (50 -> 10, 100 -> 1) where a plain scale happens to agree with the real
+		// formula, and both wrote wrong values everywhere else. One point cannot
+		// tell a scale from an affine map; two can.
+		{"road_sensitivity", 50, 10, "raw = d*4 + 10: the reading a real base gave"},
+		{"road_sensitivity", 10, 0, "raw = d*4 + 10: the floor is 10, not 0"},
+		{"road_sensitivity", 30, 5, "raw = d*4 + 10"},
+		{"soft_limit_stiffness", 100, 1, "raw = d*400/9 - 400/9 + 100: the reading a real base gave"},
+		{"soft_limit_stiffness", 278, 5, "Boxflat's own reset default"},
+		{"soft_limit_stiffness", 500, 10, "the top of the range is 500, not 1000"},
+		// From Boxflat's source rather than observed: tenths, which agree with a
+		// pass-through only at Boxflat's default of 0.
+		{"interpolation", 50, 5, "stored in tenths"},
+		// Inverted: the slider rises as the first curve point moves left.
+		{"ffb_curve_x1", 20, 0, "raw = 20 - d: no offset, first point at 20% input"},
+		{"ffb_curve_x1", 2, 18, "raw = 20 - d: fully left"},
+		{"ffb_curve_y3", 60, 60, "unscaled percentage"},
 		{"equalizer1", 200, 200, "unscaled"},
 		// The main device stores the game gains as one 0..255 byte, shown as a
 		// percentage: Boxflat reports 128 as 50%.

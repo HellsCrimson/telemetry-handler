@@ -18,6 +18,7 @@ import '@fontsource/ibm-plex-mono/600.css'
 import './design/tokens.css'
 import './design/components.css'
 import './design/controls.css'
+import './design/hardware.css'
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
